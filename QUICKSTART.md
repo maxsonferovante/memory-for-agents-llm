@@ -16,6 +16,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 - `knowledge/` stores durable memory.
 - `knowledge/_proposals/` is the staging area before promotion.
 - `CLAUDE.md`, `.claude/rules/`, `.claude/agents/`, `.claude/templates/`, `.claude/skills/`, and `hooks/` define how Claude Code behaves in this repo.
+- `.github/workflows/` and `.github/pull_request_template.md` automate pull request creation for `feature/*` branches.
 
 ## Standard flow
 
@@ -26,6 +27,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 5. `reviewer` checks correctness, consistency, security, and drift.
 6. `memory-curator` promotes the durable learning into canonical knowledge.
 7. `hooks` block unsafe writes and promote proposals marked `ready`.
+8. GitHub Actions opens a pull request automatically for `feature/*` branches and uses the predefined PR template.
 
 ## Where knowledge goes
 

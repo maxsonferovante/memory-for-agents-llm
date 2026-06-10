@@ -25,6 +25,8 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 - `.claude/templates/` for session-ready prompts.
 - `hooks/` for enforcement and automatic curation.
 - `.claude/skills/` for reusable workflows.
+- `.github/workflows/` for repo automation such as auto-opening pull requests.
+- `.github/pull_request_template.md` for the default PR body.
 
 ## Available agents
 
@@ -107,6 +109,7 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 - Compare the same rule across multiple repos and decide the canonical home.
 - Turn an incident into a runbook, a postmortem, or a durable lesson.
 - Prepare a repo handoff for another session or another repo.
+- Open a pull request automatically when a `feature/*` branch is created or pushed, using the predefined PR template.
 
 ## Typical workflow
 
@@ -118,6 +121,7 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 6. Use `reviewer` to validate correctness and drift.
 7. Use `memory-curator` to promote the durable learning.
 8. Let the hooks block unsafe writes and promote `ready` proposals automatically.
+9. Create a `feature/*` branch and let GitHub Actions open the PR with the default template.
 
 ## Memory contract
 
