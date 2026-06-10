@@ -1,0 +1,13 @@
+# memory-for-agents-llm repo knowledge
+
+This is the example repo scope used to show how repo-local knowledge consumes product-level memory contracts.
+
+## Canonical docs
+
+- [repo-local-memory-overrides.md](./repo-local-memory-overrides.md)
+
+## Repo rule
+
+- Keep local notes focused on this repo only.
+- Link shared behavior back to `knowledge/products/claude-code-memory-platform/`.
+- Use repo-local notes for layout, path conventions, and implementation-specific exceptions.
