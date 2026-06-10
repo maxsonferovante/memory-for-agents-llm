@@ -36,3 +36,9 @@ This directory is the durable knowledge layer for the repo. It is the canonical 
 - A note is not canonical until it is source-backed.
 - A note is not reusable until it has scope and status.
 - A note is not stable until it has an owner and a review state.
+
+## Local bootstrap
+
+- The repository ships [`scripts/install_claude_assets.py`](../scripts/install_claude_assets.py) to copy the repo agents, skills, and hook wiring into a local Claude config directory.
+- Run the installer with `--dry-run` first, then without flags for a real install.
+- Use `--force` only when you intentionally want to overwrite differing local files.

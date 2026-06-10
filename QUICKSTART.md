@@ -10,6 +10,19 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 4. `knowledge/org/README.md`
 5. `knowledge/_proposals/README.md`
 
+## Optional bootstrap
+
+If you want the local Claude Code config to receive the repo agents, skills, and hooks in one pass, run:
+
+```bash
+python3 scripts/install_claude_assets.py --dry-run  # macOS/Linux
+py -3 scripts/install_claude_assets.py --dry-run     # Windows
+python3 scripts/install_claude_assets.py             # macOS/Linux
+py -3 scripts/install_claude_assets.py               # Windows
+```
+
+The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files.
+
 ## The mental model
 
 - Git is the source of truth.
