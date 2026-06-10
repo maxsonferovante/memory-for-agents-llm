@@ -2,6 +2,10 @@
 
 This repository is the phase-1 reference for a Claude Code memory system that works across sessions and across repos. It keeps transient conversation small and turns reusable knowledge into source-backed, versioned Markdown.
 
+## Start here
+
+- [`QUICKSTART.md`](./QUICKSTART.md) for a one-page onboarding path.
+
 ## What this project does now
 
 - Capture source-backed context into `Context Pack`s.
