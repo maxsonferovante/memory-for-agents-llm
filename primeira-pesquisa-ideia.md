@@ -125,3 +125,144 @@ Eu colocaria a verdade no Git, a memória operacional em camadas recuperáveis, 
 - [Set up Claude Code in a monorepo or large codebase](https://code.claude.com/docs/en/large-codebases.md)
 - [Orchestrate teams of Claude Code sessions](https://code.claude.com/docs/en/agent-teams.md)
 - [Manage multiple agents with agent view](https://code.claude.com/docs/en/agent-view.md)
+
+## Revisita da Fase 1: checklist de execução e validação
+
+Esta seção revisita a proposta original de Fase 1 (`CLAUDE.md`, `.claude/rules`, skills, subagents, hooks, Log4brains e Promptfoo) contra o estado atual deste repositório. O objetivo é separar o que já foi materializado, o que está parcialmente coberto e quais validações podem ser executadas agora.
+
+### Status executivo da Fase 1
+
+| Item da Fase 1 | Status | Evidência no repositório | Observação |
+|---|---|---|---|
+| `CLAUDE.md` como contrato sempre ativo | Concluído | `CLAUDE.md` e `.claude/CLAUDE.md` | Já existe contrato raiz e contrato operacional do runtime Claude. |
+| `.claude/rules` por governança, contexto cross-repo e SDD | Concluído | `.claude/rules/00-memory-governance.md`, `.claude/rules/10-cross-repo-context.md`, `.claude/rules/20-sdd-lifecycle.md` | As regras cobrem escrita de memória, compartilhamento entre repositórios e ciclo SDD. |
+| Skills reutilizáveis | Concluído | `.claude/skills/context-pack/`, `.claude/skills/memory-curation/`, `.claude/skills/cross-repo-synthesis/` | Os skills já têm `SKILL.md` e servem como workflows reutilizáveis. |
+| Subagents especializados | Concluído | `.claude/agents/*.md` | Foram criados os agentes da fase inicial: coordinator, context-researcher, spec-analyst, architect, implementer, reviewer, incident-analyst, memory-curator e cross-repo-coordinator. |
+| Templates operacionais de sessão | Concluído | `.claude/templates/*.md` | Já existem templates para context-researcher, memory-curator, spec-analyst, architect e reviewer. |
+| Hooks de enforcement | Concluído | `hooks/memory_hooks.py` e `hooks/README.md` | O hook valida propostas, bloqueia escrita direta em memória canônica e promove propostas `ready`. |
+| Instalador local para Claude Code | Concluído | `scripts/install_claude_assets.py` | O script instala agents, skills e hooks em `CLAUDE_CONFIG_DIR` ou `~/.claude` sem interação com o usuário. |
+| Knowledge canônico versionado em Git | Concluído | `knowledge/org/*.md` | Os contratos de governança, escopo, context pack, ciclo de agentes e curadoria já foram promovidos. |
+| Exemplos de fluxo product/repo | Concluído | `knowledge/products/` e `knowledge/repos/` | Há exemplos para demonstrar compartilhamento entre produto e repositório. |
+| Área de propostas e promoção | Concluído | `knowledge/_proposals/` | O pacote inicial demonstra propostas, exemplo de Context Pack e critérios de promoção. |
+| Log4brains | Não iniciado nesta fase prática | `knowledge/adr/README.md` existe, mas não há integração Log4brains | A proposta original citava Log4brains; por enquanto a Fase 1 implementada cobre ADR/docs-as-code por estrutura de pastas, sem ferramenta externa. |
+| Promptfoo | Não iniciado nesta fase prática | Sem arquivos de configuração Promptfoo | A proposta original citava Promptfoo; por enquanto há checklist e hooks locais, mas ainda não há evals automatizadas de prompts. |
+
+### Veredito da Fase 1
+
+A Fase 1 foi executada com êxito para o núcleo operacional de memória entre sessões e repositórios:
+
+- contratos de topo existem;
+- regras, agentes, skills e templates estão materializados;
+- a base `knowledge/` tem governança, escopo, fluxo de curadoria e exemplos;
+- os hooks locais validam e protegem o ciclo de memória;
+- existe instalador não interativo para distribuir os assets do Claude Code por máquina.
+
+A Fase 1 ainda não está completa se considerarmos literalmente todas as ferramentas citadas na pesquisa inicial. `Log4brains` e `Promptfoo` continuam como próximos incrementos opcionais, não como bloqueadores do fluxo atual de memória.
+
+### Checklist de aceite da Fase 1
+
+- [x] Existe `CLAUDE.md` na raiz com visão operacional do projeto.
+- [x] Existe `.claude/CLAUDE.md` com contrato específico para o runtime Claude.
+- [x] Existem regras em `.claude/rules/` para governança de memória, contexto cross-repo e SDD.
+- [x] Existem agentes especializados em `.claude/agents/`.
+- [x] Existem templates operacionais em `.claude/templates/` para os principais agentes de análise, arquitetura, review, pesquisa e curadoria.
+- [x] Existem skills reutilizáveis em `.claude/skills/`.
+- [x] Existe base canônica em `knowledge/org/`.
+- [x] Existem exemplos de escopo em `knowledge/products/` e `knowledge/repos/`.
+- [x] Existe área de propostas em `knowledge/_proposals/`.
+- [x] Existe utilitário de hooks em `hooks/memory_hooks.py`.
+- [x] Existe instalador não interativo em `scripts/install_claude_assets.py`.
+- [x] O fluxo `proposal -> ready -> canonical` está documentado.
+- [x] O `Context Pack` tem contrato formal e exemplo.
+- [x] O `memory-curator` tem fluxo de promoção com checklist e critérios de aceite.
+- [ ] Existe integração real com Log4brains.
+- [ ] Existe suíte Promptfoo para avaliação automatizada de prompts/agentes.
+- [ ] Existe pipeline CI completo executando todos os testes de validação abaixo.
+
+### Testes possíveis agora para validação
+
+#### 1. Validação estrutural do repositório
+
+Objetivo: garantir que os diretórios e contratos mínimos da Fase 1 existem.
+
+```bash
+test -f CLAUDE.md
+test -f .claude/CLAUDE.md
+test -d .claude/agents
+test -d .claude/rules
+test -d .claude/skills
+test -d .claude/templates
+test -d knowledge/org
+test -d knowledge/_proposals
+test -f hooks/memory_hooks.py
+test -f scripts/install_claude_assets.py
+```
+
+#### 2. Validação de sintaxe Python
+
+Objetivo: garantir que os scripts executáveis continuam compilando.
+
+```bash
+python3 -m py_compile hooks/memory_hooks.py scripts/install_claude_assets.py
+```
+
+#### 3. Validação do contrato de proposta
+
+Objetivo: garantir que uma proposta existente continua válida para o hook de memória.
+
+```bash
+python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md
+```
+
+#### 4. Validação de promoção registrada
+
+Objetivo: garantir que o exemplo de promoção do `memory-curator` respeita o contrato de checklist e critérios de aceite.
+
+```bash
+python3 hooks/memory_hooks.py validate-promotion knowledge/org/memory-curator-promotion-example.md
+```
+
+#### 5. Validação do guard de escrita canônica
+
+Objetivo: garantir que escrita direta em memória canônica é bloqueada pelo hook.
+
+```bash
+python3 hooks/memory_hooks.py guard-write --path knowledge/org/memory-governance.md
+```
+
+Resultado esperado: o comando deve falhar/bloquear, porque escrita direta em `knowledge/org/` deve passar por proposta e curadoria.
+
+#### 6. Validação de promoção automática em modo seguro
+
+Objetivo: garantir que o hook consegue varrer proposals `ready` sem alterar o repositório.
+
+```bash
+python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals --dry-run
+```
+
+#### 7. Validação do instalador sem tocar no ambiente real
+
+Objetivo: garantir que o instalador consegue montar agents, skills e hooks em um diretório temporário.
+
+```bash
+python3 scripts/install_claude_assets.py --config-dir /tmp/claude-install-test --dry-run
+python3 scripts/install_claude_assets.py --config-dir /tmp/claude-install-test --force
+```
+
+Em Windows, trocar `/tmp/claude-install-test` por um diretório temporário local, por exemplo `%TEMP%\\claude-install-test`.
+
+#### 8. Validação documental mínima
+
+Objetivo: garantir que os pontos de entrada principais continuam mencionando o fluxo de memória.
+
+```bash
+rg -n "Context Pack|memory-curator|promote-ready|install_claude_assets|knowledge/_proposals" README.md QUICKSTART.md CLAUDE.md knowledge/README.md .claude/CLAUDE.md
+```
+
+### Próximas validações recomendadas
+
+- Criar um teste automatizado em `tests/` para validar a presença dos arquivos obrigatórios da Fase 1.
+- Criar fixtures de proposals `draft`, `ready`, `promoted` e `rejected` para testar `hooks/memory_hooks.py` sem depender dos documentos reais.
+- Adicionar CI com `py_compile`, validação estrutural, validação de proposals e teste do instalador em diretório temporário.
+- Introduzir Promptfoo apenas quando houver prompts/agentes com outputs esperados suficientemente estáveis.
+- Introduzir Log4brains apenas quando os ADRs reais começarem a crescer e precisarem de publicação/navegação dedicada.
