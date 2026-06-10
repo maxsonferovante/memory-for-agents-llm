@@ -1,6 +1,6 @@
 # Claude memory architecture repo
 
-This repository is the phase-1 reference for a Claude Code memory system that works across sessions and across repos. It keeps transient conversation small and turns reusable knowledge into source-backed, versioned Markdown.
+This repository is the reference for a Claude Code memory system that works across sessions and across repos. It keeps transient conversation small and turns reusable knowledge into source-backed, versioned Markdown.
 
 ## Start here
 
