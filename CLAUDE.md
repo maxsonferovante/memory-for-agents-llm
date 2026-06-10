@@ -34,6 +34,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 - Use `cross-repo-coordinator` when the same concept appears in more than one repo.
 - Use the session templates in `.claude/templates/` when you need a copy-paste prompt for a repeatable agent run.
 - Start with [`QUICKSTART.md`](./QUICKSTART.md) if you are new to the repo.
+- Use [`scripts/install_claude_assets.py`](./scripts/install_claude_assets.py) to bootstrap the local Claude config with the repo agents, skills, and hook wiring.
 
 ## Memory rules
 

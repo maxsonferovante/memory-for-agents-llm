@@ -28,6 +28,14 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 - `.github/workflows/` for repo automation such as auto-opening pull requests.
 - `.github/pull_request_template.md` for the default PR body.
 
+## Local bootstrap
+
+- `scripts/install_claude_assets.py` installs the repo agents, skills, and hook wiring into the local Claude Code config directory.
+- The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
+- It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
+- Recommended first check: run it with your local Python 3 launcher, for example `python3 scripts/install_claude_assets.py --dry-run` on macOS/Linux or `py -3 scripts/install_claude_assets.py --dry-run` on Windows.
+- Recommended install: `python3 scripts/install_claude_assets.py` or the equivalent launcher on your platform.
+
 ## Available agents
 
 - `coordinator` keeps the main session small and orchestrates the flow.
@@ -60,12 +68,21 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 - `PostToolUse` validates whether new memory artifacts are ready for curation.
 - `Stop` promotes proposals marked `ready` into canonical knowledge.
 - The hook utility lives at [`hooks/memory_hooks.py`](./hooks/memory_hooks.py).
+- The installer copies the hook bundle into the local Claude config and wires it through `settings.json`.
 
 ### Useful commands
 
+- `python3 scripts/install_claude_assets.py --dry-run`
+- `python3 scripts/install_claude_assets.py --force`
 - `python3 hooks/memory_hooks.py guard-write --path knowledge/org/memory-governance.md`
 - `python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md`
 - `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`
+
+## Pull request automation
+
+- Branches that start with `feature/` can be opened as pull requests by the workflow in `.github/workflows/auto-open-pr-on-feature-branch.yml`.
+- That automation requires a repository secret named `PR_AUTOMATION_TOKEN` with `pull_requests: write` permission.
+- If the secret is not configured, the workflow emits a notice and skips PR creation instead of failing.
 
 ## Knowledge model
 
