@@ -27,13 +27,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Skip when PR automation token is not configured
-        if: ${{ secrets.PR_AUTOMATION_TOKEN == '' }}
+      - name: Prepare PR automation token state
+        id: pr_token
+        env:
+          PR_AUTOMATION_TOKEN: ${{ secrets.PR_AUTOMATION_TOKEN }}
         run: |
-          echo "::notice::PR automation token is not configured, so this run will not create a pull request."
+          if [ -n "$PR_AUTOMATION_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR automation token is not configured, so this run will not create a pull request."
+          fi
 
       - name: Open pull request if needed
-        if: ${{ secrets.PR_AUTOMATION_TOKEN != '' }}
+        if: ${{ steps.pr_token.outputs.has_token == 'true' }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN }}
