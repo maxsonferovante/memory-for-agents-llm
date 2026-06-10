@@ -23,6 +23,10 @@ py -3 scripts/install_claude_assets.py               # Windows
 
 The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files.
 
+## Pull request automation
+
+Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATION_TOKEN` is configured with `pull_requests: write`. Without that secret, the workflow skips PR creation and leaves the branch ready for manual PR opening.
+
 ## The mental model
 
 - Git is the source of truth.

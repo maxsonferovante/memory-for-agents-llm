@@ -78,6 +78,12 @@ This repository is the phase-1 reference for a Claude Code memory system that wo
 - `python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md`
 - `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`
 
+## Pull request automation
+
+- Branches that start with `feature/` can be opened as pull requests by the workflow in `.github/workflows/auto-open-pr-on-feature-branch.yml`.
+- That automation requires a repository secret named `PR_AUTOMATION_TOKEN` with `pull_requests: write` permission.
+- If the secret is not configured, the workflow emits a notice and skips PR creation instead of failing.
+
 ## Knowledge model
 
 - `knowledge/org/` holds organization-wide invariants and policies.
