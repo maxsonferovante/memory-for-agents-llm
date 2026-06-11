@@ -39,3 +39,4 @@ This directory holds draft memory updates before they are promoted into canonica
 
 - [2026-06-10-central-memory-backend/](./2026-06-10-central-memory-backend/) - AWS-backed central memory ingest and agent usage contract.
 - [2026-06-10-distribution-installation/](./2026-06-10-distribution-installation/) - versioned package distribution and Claude Code installation contract.
+- [2026-06-11-structured-memory-mcp/](./2026-06-11-structured-memory-mcp/) - structured memory, vector indexing, and MCP consumption roadmap.
