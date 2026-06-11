@@ -117,3 +117,20 @@ curl -X POST "$API_BASE_URL/v1/memory-batches" \
 ## Outcome
 
 After this tutorial is complete, a non-author should be able to run the backend in their own AWS account and use it as the central memory store for the agents.
+
+## Portable Docker backend preview
+
+A provider-agnostic Rust API is available under `backend/central-memory-api` for local validation and non-AWS deployments. It keeps the same v1 batch, upload, publish, latest, and snapshot routes, but writes all objects to `MEMORY_BACKEND_STORAGE_DIR` and returns a local `PUT /v1/uploads/{batch_id}/bundle` upload target instead of an S3 pre-signed URL.
+
+```bash
+docker build -t central-memory-api backend/central-memory-api
+docker run --rm \
+  -p 8080:8080 \
+  -e MEMORY_BACKEND_AUTH_TOKEN=dev-token \
+  -e MEMORY_BACKEND_PUBLIC_URL=http://localhost:8080 \
+  -v central-memory-data:/data \
+  central-memory-api
+curl http://localhost:8080/healthz
+```
+
+Use this backend when the goal is to validate the memory API contract in a portable container before choosing a production object store or cloud-specific deployment target.
