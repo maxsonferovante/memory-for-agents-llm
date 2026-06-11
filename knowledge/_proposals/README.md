@@ -22,6 +22,7 @@ This directory holds draft memory updates before they are promoted into canonica
 - You can group related proposals into dated folders when they belong to the same memory initiative.
 - Each folder should include a `README.md` that explains the bundle and the promotion order.
 - The first package for this repo is `2026-06-09-memory-foundation/`.
+- Additional packages should be added here as they appear so reviewers can find the staged work quickly.
 - When the package is promoted, keep the proposal files as historical drafts and point readers to `knowledge/org/`.
 
 ## Suggested filename
@@ -33,3 +34,8 @@ This directory holds draft memory updates before they are promoted into canonica
 - `memory-curator` is the default agent that promotes or rejects proposals.
 - Other agents may write proposals, but they should not silently mutate canonical docs.
 - Hook automation may only promote proposals that are marked `ready`.
+
+## Additional packages
+
+- [2026-06-10-central-memory-backend/](./2026-06-10-central-memory-backend/) - AWS-backed central memory ingest and agent usage contract.
+- [2026-06-10-distribution-installation/](./2026-06-10-distribution-installation/) - versioned package distribution and Claude Code installation contract.

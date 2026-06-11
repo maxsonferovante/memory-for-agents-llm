@@ -1,3 +1,11 @@
 .DS_Store
 __pycache__/
 *.pyc
+dist/
+backend/central-memory-lambda/target/
+infra/terraform/central-memory-backend/.terraform/
+infra/terraform/central-memory-backend/terraform.tfstate
+infra/terraform/central-memory-backend/terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info

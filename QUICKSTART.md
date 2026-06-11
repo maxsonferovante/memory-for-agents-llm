@@ -23,6 +23,34 @@ py -3 scripts/install_claude_assets.py               # Windows
 
 The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files.
 
+## Public release flow
+
+To build a versioned release artifact and install it from a path or URL:
+
+```bash
+python3 scripts/package_release.py --version v0.1.0
+python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run
+python3 scripts/install_public_release.py --source https://example.com/releases/memory-for-agents-llm-v0.1.0.tar.gz
+```
+
+Use `--include-knowledge` with the packaging script when you want the full memory reference package instead of the runtime-only package.
+
+## Backend deployment flow
+
+To build and deploy the self-hosted AWS memory backend in one release flow:
+
+```bash
+export AWS_PROFILE=your-profile
+export AWS_REGION=us-east-1
+export API_KEY_VALUE=replace-with-a-secret
+python3 scripts/release_central_memory_backend.py --aws-region "${AWS_REGION}" --api-key-value "${API_KEY_VALUE}" --auto-approve
+source dist/backend/central-memory-backend/backend.env
+echo "$API_BASE_URL"
+echo "$API_KEY_HEADER"
+```
+
+If you set a `backend_auth_token`, export `BACKEND_AUTH_TOKEN=...` before running the release script. The script writes that value into `dist/backend/central-memory-backend/backend.env` so the local client can reuse the same auth contract.
+
 ## Pull request automation
 
 Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATION_TOKEN` is configured with `pull_requests: write`. Without that secret, the workflow skips PR creation and leaves the branch ready for manual PR opening.
