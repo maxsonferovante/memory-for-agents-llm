@@ -34,6 +34,7 @@ Use this checklist before publishing a versioned package so a third party can in
 - [ ] The backend deployment tutorial shows the one-step release script and the generated `backend.env` file.
 - [ ] The backend tutorial documents the required AWS profile and region inputs.
 - [ ] The backend tutorial documents the API key and rate limit inputs.
+- [ ] The backend tutorial shows the smoke test helper that exercises write and read.
 - [ ] The backend tutorial includes the read-path and write-path smoke tests.
 - [ ] The backend release bundle exposes the API endpoint and storage outputs.
 

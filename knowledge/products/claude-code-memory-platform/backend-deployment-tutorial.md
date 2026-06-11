@@ -41,8 +41,9 @@ Show a third party how to deploy the central memory backend into their own AWS a
 5. Run the one-step release script that builds the Rust Lambda zip artifact and applies the Terraform stack.
 6. Capture the generated `backend.env` file and source it in the local shell.
 7. Configure the local Claude environment to point to the backend base URL and `x-api-key` value.
-8. Run the memory install flow in dry-run mode before enabling publication.
-9. Publish one test snapshot and verify the latest-read path.
+8. Run the smoke test helper to prove the write path end to end.
+9. Run the memory install flow in dry-run mode before enabling publication.
+10. Publish one test snapshot and verify the latest-read path.
 
 ## Terraform contract
 
@@ -58,6 +59,7 @@ Show a third party how to deploy the central memory backend into their own AWS a
 - The release script writes a sourceable `backend.env` file with `API_BASE_URL`, `API_KEY_VALUE`, and `API_KEY_HEADER=x-api-key`.
 - The local client must send the key in the `x-api-key` header on every request.
 - The usage plan controls the steady-state and burst limits for that key.
+- The hook runtime loads `backend.env` automatically when it exists, so the same environment is available to write and read helpers.
 
 ## AWS config contract
 
@@ -95,6 +97,7 @@ python3 scripts/release_central_memory_backend.py \
 source dist/backend/central-memory-backend/backend.env
 echo "$API_BASE_URL"
 echo "$API_KEY_HEADER"
+python3 scripts/smoke_test_central_memory_backend.py --env-file dist/backend/central-memory-backend/backend.env
 ```
 
 If you want bearer-token protection on the Lambda, export `BACKEND_AUTH_TOKEN=change-me` before running the release script. That is optional and separate from the API key.

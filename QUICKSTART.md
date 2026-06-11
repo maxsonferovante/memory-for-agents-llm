@@ -47,9 +47,11 @@ python3 scripts/release_central_memory_backend.py --aws-region "${AWS_REGION}" -
 source dist/backend/central-memory-backend/backend.env
 echo "$API_BASE_URL"
 echo "$API_KEY_HEADER"
+python3 scripts/smoke_test_central_memory_backend.py --env-file dist/backend/central-memory-backend/backend.env
 ```
 
 If you set a `backend_auth_token`, export `BACKEND_AUTH_TOKEN=...` before running the release script. The script writes that value into `dist/backend/central-memory-backend/backend.env` so the local client can reuse the same auth contract.
+The hook runtime also loads that same `backend.env` automatically when present.
 
 ## Pull request automation
 

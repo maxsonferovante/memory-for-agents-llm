@@ -196,7 +196,15 @@ async fn main() -> Result<(), Error> {
 async fn handle_request(request: Request, state: Arc<AppState>) -> Result<Response<Body>, Error> {
     let response = match route_request(&request, state).await {
         Ok(value) => value,
-        Err(err) => error_response(err),
+        Err(err) => {
+            tracing::error!(
+                method = %request.method(),
+                path = %request.uri().path(),
+                error = %err,
+                "request failed"
+            );
+            error_response(err)
+        }
     };
     Ok(response)
 }
@@ -273,10 +281,10 @@ async fn create_batch(request: &Request, state: Arc<AppState>) -> AppResult<Resp
         .key(&bundle_key)
         .presigned(
             PresigningConfig::expires_in(Duration::from_secs(3600))
-                .map_err(|err| AppError::Internal(err.to_string()))?,
+                .map_err(|err| AppError::Internal(format!("{err:?}")))?,
         )
         .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
+        .map_err(|err| AppError::Internal(format!("{err:?}")))?;
 
     let response = UploadResponse {
         batch_id,
@@ -511,7 +519,7 @@ fn hex_sha256(data: &[u8]) -> String {
 
 async fn put_json<T: Serialize>(state: &AppState, key: &str, value: &T) -> AppResult<()> {
     let body =
-        serde_json::to_vec_pretty(value).map_err(|err| AppError::Internal(err.to_string()))?;
+        serde_json::to_vec_pretty(value).map_err(|err| AppError::Internal(format!("{err:?}")))?;
     state
         .s3
         .put_object()
@@ -521,13 +529,13 @@ async fn put_json<T: Serialize>(state: &AppState, key: &str, value: &T) -> AppRe
         .content_type("application/json")
         .send()
         .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
+        .map_err(|err| AppError::Internal(format!("{err:?}")))?;
     Ok(())
 }
 
 async fn get_json<T: for<'de> Deserialize<'de>>(state: &AppState, key: &str) -> AppResult<T> {
     let bytes = get_s3_object_bytes(state, key).await?;
-    serde_json::from_slice(&bytes).map_err(|err| AppError::Internal(err.to_string()))
+    serde_json::from_slice(&bytes).map_err(|err| AppError::Internal(format!("{err:?}")))
 }
 
 async fn get_s3_object_bytes(state: &AppState, key: &str) -> AppResult<Vec<u8>> {
@@ -539,7 +547,7 @@ async fn get_s3_object_bytes(state: &AppState, key: &str) -> AppResult<Vec<u8>> 
         .send()
         .await
         .map_err(|err| {
-            let message = err.to_string();
+            let message = format!("{err:?}");
             if message.contains("NoSuchKey") || message.contains("NotFound") {
                 AppError::NotFound(key.to_string())
             } else {
@@ -550,7 +558,7 @@ async fn get_s3_object_bytes(state: &AppState, key: &str) -> AppResult<Vec<u8>> 
         .body
         .collect()
         .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
+        .map_err(|err| AppError::Internal(format!("{err:?}")))?;
     Ok(data.into_bytes().to_vec())
 }
 
@@ -565,7 +573,7 @@ async fn object_exists(state: &AppState, key: &str) -> AppResult<bool> {
     {
         Ok(_) => Ok(true),
         Err(err) => {
-            let message = err.to_string();
+            let message = format!("{err:?}");
             if message.contains("NotFound") || message.contains("404") {
                 Ok(false)
             } else {

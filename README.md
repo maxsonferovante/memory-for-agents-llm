@@ -85,6 +85,7 @@ This repository is the reference for a Claude Code memory system that works acro
 - `python3 scripts/build_central_memory_backend.py`
 - `python3 scripts/release_central_memory_backend.py --aws-region us-east-1 --api-key-value replace-with-a-secret --auto-approve`
 - `source dist/backend/central-memory-backend/backend.env`
+- `python3 scripts/smoke_test_central_memory_backend.py --env-file dist/backend/central-memory-backend/backend.env`
 - `python3 hooks/memory_hooks.py guard-write --path knowledge/org/memory-governance.md`
 - `python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md`
 - `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`
