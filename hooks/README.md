@@ -27,3 +27,9 @@ The same utility also exposes `validate-proposal` when you want to check a draft
 - Hooks should only move source-backed information from transient work into the proposal queue or reject it.
 - Hooks must not silently overwrite a canonical note with a different body.
 - Hooks must fail closed if a proposal is missing a target path, source trail, or required metadata.
+
+## Remote backend wiring
+
+- When `MEMORY_BACKEND_ENV_FILE` is set, or when `dist/backend/central-memory-backend/backend.env` exists, the hook runtime loads it before running hook logic.
+- The backend client reads `API_BASE_URL`, `API_KEY_VALUE`, `API_KEY_HEADER`, and optional `BACKEND_AUTH_TOKEN` from that environment.
+- This keeps the remote write and read path out of the hook contract itself while still making the backend available to the same process tree.

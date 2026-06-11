@@ -35,6 +35,11 @@ This repository is the reference for a Claude Code memory system that works acro
 - It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
 - Recommended first check: run it with your local Python 3 launcher, for example `python3 scripts/install_claude_assets.py --dry-run` on macOS/Linux or `py -3 scripts/install_claude_assets.py --dry-run` on Windows.
 - Recommended install: `python3 scripts/install_claude_assets.py` or the equivalent launcher on your platform.
+- `scripts/package_release.py` builds a versioned release artifact from Git and can optionally include `knowledge/`.
+- `scripts/install_public_release.py` installs a public release artifact from a path or URL in one command.
+- `scripts/build_central_memory_backend.py` builds the Rust Lambda ZIP used by the AWS backend tutorial.
+- `scripts/release_central_memory_backend.py` runs the backend release flow end to end and emits a sourceable config file.
+- `infra/terraform/central-memory-backend/` contains the self-hosted AWS stack for the central memory backend.
 
 ## Available agents
 
@@ -74,6 +79,13 @@ This repository is the reference for a Claude Code memory system that works acro
 
 - `python3 scripts/install_claude_assets.py --dry-run`
 - `python3 scripts/install_claude_assets.py --force`
+- `python3 scripts/package_release.py --version v0.1.0`
+- `python3 scripts/package_release.py --version v0.1.0 --include-knowledge`
+- `python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run`
+- `python3 scripts/build_central_memory_backend.py`
+- `python3 scripts/release_central_memory_backend.py --aws-region us-east-1 --api-key-value replace-with-a-secret --auto-approve`
+- `source dist/backend/central-memory-backend/backend.env`
+- `python3 scripts/smoke_test_central_memory_backend.py --env-file dist/backend/central-memory-backend/backend.env`
 - `python3 hooks/memory_hooks.py guard-write --path knowledge/org/memory-governance.md`
 - `python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md`
 - `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`

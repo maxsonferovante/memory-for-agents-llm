@@ -8,6 +8,14 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+try:
+    from central_memory_backend_client import load_backend_env_if_present
+except ImportError:  # pragma: no cover - fallback when hook bundle is incomplete
+    def load_backend_env_if_present() -> dict[str, str]:
+        return {}
+
+
+load_backend_env_if_present()
 
 CANONICAL_BUCKETS = {
     "org",
