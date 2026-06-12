@@ -39,11 +39,12 @@ This repository is the reference for a coding-agent memory system that works acr
 
 - Codex can use the repo-local `.codex/` and `.agents/skills/` layers directly after the project is trusted.
 - `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations.
-- `scripts/install_claude_assets.py` installs the repo agents, skills, and hook wiring into the local Claude Code config directory.
+- `scripts/install_claude_assets.py` installs the repo agents, skills, hook wiring, and the project-scoped `localMemory` MCP registration into the local Claude Code config.
 - The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
 - It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
 - Recommended first check: run it with your local Python 3 launcher, for example `python3 scripts/install_claude_assets.py --dry-run` on macOS/Linux or `py -3 scripts/install_claude_assets.py --dry-run` on Windows.
 - Recommended install: `python3 scripts/install_claude_assets.py` or the equivalent launcher on your platform.
+- Claude hook settings are written to `~/.claude/settings.json`; Claude project MCP registration is written to `~/.claude.json` under the current repo path.
 - `docker compose up --build` starts the local mini stack with API, worker, and MCP server.
 - `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item.
 
@@ -80,7 +81,7 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 ## Skills
 
 - `context-pack` compresses sources into the smallest useful context bundle.
-- `memory-curation` turns repeated learning into canonical knowledge updates.
+- `memory-curation` turns repeated learning into canonical knowledge updates and promotes ready proposals immediately in the same session.
 - `cross-repo-synthesis` compares the same concept across repositories and produces a shared view.
 
 ## Hooks

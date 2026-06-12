@@ -14,6 +14,7 @@ from typing import Iterable
 
 PACKAGE_NAME = "memory-for-agents-llm"
 HOOK_MATCHER = "Write|Edit|NotebookEdit"
+CLAUDE_MCP_SERVER_NAME = "localMemory"
 
 
 def discover_repo_root() -> Path:
@@ -211,12 +212,19 @@ if __name__ == "__main__":
 def ensure_hook_runner(package_hooks_dir: Path, dry_run: bool) -> str:
     runner_path = package_hooks_dir / "claude_hook_runner.py"
     runner_text = hook_runner_source().rstrip() + "\n"
-    if dry_run:
-        return f"would write {runner_path}"
+    existed = runner_path.exists()
+    if existed:
+        if runner_path.read_text(encoding="utf-8") == runner_text:
+            return f"unchanged {runner_path}"
+        if dry_run:
+            return f"would update {runner_path}"
+    else:
+        if dry_run:
+            return f"would write {runner_path}"
 
     runner_path.parent.mkdir(parents=True, exist_ok=True)
     runner_path.write_text(runner_text, encoding="utf-8")
-    return f"created {runner_path}"
+    return f"{'updated' if existed else 'created'} {runner_path}"
 
 
 def merge_hook(settings: dict, event: str, entry: dict) -> bool:
@@ -244,6 +252,70 @@ def merge_hook(settings: dict, event: str, entry: dict) -> bool:
             return False
 
     current.append(entry)
+    return True
+
+
+def claude_project_state_path(claude_home: Path) -> Path:
+    return claude_home.with_name(f"{claude_home.name}.json")
+
+
+def build_claude_local_memory_server(repo_root: Path) -> dict:
+    return {
+        "command": "cargo",
+        "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            str(repo_root / "local_stack" / "mcp-server" / "Cargo.toml"),
+        ],
+        "env": {
+            "MEMORY_INDEX_PATH": str(
+                repo_root / "local_stack" / "data" / "derived" / "index.json"
+            )
+        },
+    }
+
+
+def merge_project_mcp_server(
+    state: dict, project_root: Path, server_name: str, server_config: dict
+) -> bool:
+    projects = state.setdefault("projects", {})
+    if not isinstance(projects, dict):
+        raise SystemExit(".claude.json projects must be an object")
+
+    project_key = str(project_root)
+    project_state = projects.setdefault(project_key, {})
+    if not isinstance(project_state, dict):
+        raise SystemExit(f".claude.json projects.{project_key} must be an object")
+
+    if "mcpContextUris" not in project_state:
+        project_state["mcpContextUris"] = []
+    if not isinstance(project_state["mcpContextUris"], list):
+        raise SystemExit(f".claude.json projects.{project_key}.mcpContextUris must be an array")
+
+    if "enabledMcpjsonServers" not in project_state:
+        project_state["enabledMcpjsonServers"] = []
+    if not isinstance(project_state["enabledMcpjsonServers"], list):
+        raise SystemExit(
+            f".claude.json projects.{project_key}.enabledMcpjsonServers must be an array"
+        )
+
+    if "disabledMcpjsonServers" not in project_state:
+        project_state["disabledMcpjsonServers"] = []
+    if not isinstance(project_state["disabledMcpjsonServers"], list):
+        raise SystemExit(
+            f".claude.json projects.{project_key}.disabledMcpjsonServers must be an array"
+        )
+
+    mcp_servers = project_state.setdefault("mcpServers", {})
+    if not isinstance(mcp_servers, dict):
+        raise SystemExit(f".claude.json projects.{project_key}.mcpServers must be an object")
+
+    current = mcp_servers.get(server_name)
+    if current == server_config:
+        return False
+
+    mcp_servers[server_name] = server_config
     return True
 
 
@@ -309,6 +381,34 @@ def update_settings(settings_path: Path, runner_path: Path, package_hooks_dir: P
     return message
 
 
+def update_project_state(
+    state_path: Path, repo_root: Path, dry_run: bool
+) -> str:
+    state = read_json(state_path)
+    changed = merge_project_mcp_server(
+        state,
+        repo_root,
+        CLAUDE_MCP_SERVER_NAME,
+        build_claude_local_memory_server(repo_root),
+    )
+
+    if not changed:
+        return f"unchanged {state_path}"
+
+    if state_path.exists():
+        if dry_run:
+            message = f"would update {state_path}"
+        else:
+            backup = backup_path(state_path)
+            shutil.copy2(state_path, backup)
+            message = f"updated {state_path} (backup {backup})"
+    else:
+        message = f"{'would ' if dry_run else ''}create {state_path}"
+
+    write_json(state_path, state, dry_run=dry_run)
+    return message
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install Claude Code agents, skills, and memory hooks."
@@ -353,6 +453,13 @@ def main() -> int:
             claude_home / "settings.json",
             package_hooks_dir / "claude_hook_runner.py",
             package_hooks_dir,
+            args.dry_run,
+        )
+    )
+    actions.append(
+        update_project_state(
+            claude_project_state_path(claude_home),
+            repo_root,
             args.dry_run,
         )
     )

@@ -38,7 +38,7 @@ The install flow is deterministic, dry-run-first, and safe for third-party use.
 ## Trust boundary
 
 - The installer may copy the approved runtime assets.
-- The installer may wire hooks and settings.
+- The installer may wire hooks, Claude settings, and Claude project MCP registration.
 - The installer must not invent new agent logic.
 - The installer must not overwrite user files silently.
 - The installer must never be the only source of truth for canonical memory.
@@ -50,6 +50,7 @@ The install flow is deterministic, dry-run-first, and safe for third-party use.
 - Run the installer without `--dry-run`.
 - Confirm that the expected files exist in the Claude config directory.
 - Confirm that the hook wiring points to the packaged runner.
+- Confirm that the Claude project state registers the `localMemory` MCP server for the repo path.
 - Confirm that the installed assets still reference the repo or release version that produced them.
 
 ## Fallback behavior
