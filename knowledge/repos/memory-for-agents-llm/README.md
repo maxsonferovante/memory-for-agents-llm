@@ -8,6 +8,7 @@ This is the example repo scope used to show how repo-local knowledge consumes pr
 - [codex-installer-toml-serialization.md](./codex-installer-toml-serialization.md)
 - [local-stack-observability.md](./local-stack-observability.md)
 - [local-stack-ingest-idempotency.md](./local-stack-ingest-idempotency.md)
+- [rtk-command-execution-convention.md](./rtk-command-execution-convention.md)
 
 ## Repo rule
 
