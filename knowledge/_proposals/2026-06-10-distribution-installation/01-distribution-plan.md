@@ -69,7 +69,6 @@ Ship the system as a versioned source package with a deterministic installer.
 - [scripts/install_claude_assets.py](../../../scripts/install_claude_assets.py)
 - [knowledge/README.md](../../../knowledge/README.md)
 - [knowledge/org/memory-governance.md](../../../knowledge/org/memory-governance.md)
-- [knowledge/_proposals/2026-06-10-central-memory-backend/README.md](../2026-06-10-central-memory-backend/README.md)
 
 ## Acceptance criteria
 

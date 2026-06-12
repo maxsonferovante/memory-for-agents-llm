@@ -9,6 +9,7 @@ This is the example product scope used to show how shared memory knowledge moves
 - [installation-contract.md](./installation-contract.md)
 - [release-checklist.md](./release-checklist.md)
 - [backend-deployment-tutorial.md](./backend-deployment-tutorial.md)
+- [memory-indexing-and-mcp.md](../../integrations/memory-indexing-and-mcp.md)
 
 ## Product rule
 

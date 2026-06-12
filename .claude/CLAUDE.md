@@ -19,6 +19,7 @@ Use this file as the operational layer for Claude Code sessions in this repo.
 - Delegate durable knowledge promotion to `memory-curator`.
 - Use `.claude/templates/` when you need a copy-paste session prompt for `context-researcher`, `spec-analyst`, `architect`, `reviewer`, or `memory-curator`.
 - Use `hooks/` as the enforcement layer for canonical-write guards and ready-proposal promotion.
+- Use MCP memory resources before broad repository exploration when the task depends on prior decisions, repeated lessons, or cross-repo invariants.
 - Use `scripts/install_claude_assets.py` to bootstrap the local Claude config with this repo's agents, skills, and hook wiring.
 
 ## Conversation shape

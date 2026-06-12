@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 dist/
 backend/central-memory-lambda/target/
+local_stack/api/target/
+local_stack/mcp-server/target/
 infra/terraform/central-memory-backend/.terraform/
 infra/terraform/central-memory-backend/terraform.tfstate
 infra/terraform/central-memory-backend/terraform.tfstate.backup

@@ -6,6 +6,8 @@ This repo uses hooks as enforcement and curation points, not as business logic.
 
 - `PreToolUse` -> `python3 hooks/memory_hooks.py guard-write`
 - `PostToolUse` -> `python3 hooks/memory_hooks.py validate-promotion`
+- `PostToolUse` -> `python3 hooks/memory_event_poster.py`
+- `Stop` -> `python3 hooks/memory_event_poster.py`
 - `Stop` -> `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`
 
 The same utility also exposes `validate-proposal` when you want to check a draft proposal directly.
@@ -28,8 +30,9 @@ The same utility also exposes `validate-proposal` when you want to check a draft
 - Hooks must not silently overwrite a canonical note with a different body.
 - Hooks must fail closed if a proposal is missing a target path, source trail, or required metadata.
 
-## Remote backend wiring
+## Local ingestion wiring
 
-- When `MEMORY_BACKEND_ENV_FILE` is set, or when `dist/backend/central-memory-backend/backend.env` exists, the hook runtime loads it before running hook logic.
-- The backend client reads `API_BASE_URL`, `API_KEY_VALUE`, `API_KEY_HEADER`, and optional `BACKEND_AUTH_TOKEN` from that environment.
-- This keeps the remote write and read path out of the hook contract itself while still making the backend available to the same process tree.
+- `hooks/memory_event_poster.py` posts hook payloads to `MEMORY_INGEST_API_URL`.
+- The default target is `http://127.0.0.1:8081/v1/events`.
+- The poster extracts repo, branch, commit, path, scope, session, and content when available.
+- When the payload includes a Markdown file path, the poster reads the file body and forwards it as event content.
