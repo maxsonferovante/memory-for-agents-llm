@@ -41,7 +41,7 @@ Hooks or agents send memory events to the backend after memory-producing actions
 }
 ```
 
-AWS deployment may use API Gateway, Lambda, S3 raw files, and DynamoDB metadata. Local deployment may use FastAPI, a filesystem `raw/` directory, and SQLite or Postgres metadata.
+Local deployment may use a filesystem `raw/` directory and SQLite or Postgres metadata.
 
 ### Phase 2: processing and indexing
 
@@ -131,12 +131,9 @@ Prompts should guide agents to consult MCP memory before broad repo exploration 
 
 ## Sources
 
-- [knowledge/integrations/central-memory-backend.md](../../../knowledge/integrations/central-memory-backend.md)
-- [knowledge/adr/central-memory-backend.md](../../../knowledge/adr/central-memory-backend.md)
 - [hooks/README.md](../../../hooks/README.md)
 - [knowledge/org/memory-curation-flow.md](../../../knowledge/org/memory-curation-flow.md)
 - [knowledge/org/cross-repo-sharing-policy.md](../../../knowledge/org/cross-repo-sharing-policy.md)
-- [AWS OpenSearch Serverless vector search documentation](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-vector-search.html)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-03-26)
 
 ## Acceptance criteria

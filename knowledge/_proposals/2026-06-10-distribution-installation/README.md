@@ -1,6 +1,6 @@
 # Distribution and installation package
 
-This package defines how the Claude Code memory system is packaged, verified, installed, and distributed to third parties before the central AWS backend exists.
+This package defines how the Claude Code memory system is packaged, verified, installed, and distributed to third parties before the local stack exists.
 
 ## Bundle order
 

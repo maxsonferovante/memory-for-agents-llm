@@ -6,7 +6,6 @@ status: active
 owner: cross-repo-coordinator
 source:
   - ../../../knowledge/_proposals/2026-06-11-structured-memory-mcp/01-structured-memory-mcp-adr.md
-  - ../../../knowledge/integrations/central-memory-backend.md
   - ../../../knowledge/org/memory-governance.md
   - ../../../knowledge/org/context-pack-contract.md
 supersedes: null
@@ -44,7 +43,7 @@ Claude Code / Agents
 
 ## Context
 
-The repository already separates memory by organization, product, domain, repo, spec, ADR, runbook, glossary, and proposal scope. The current central backend publishes immutable snapshots, which is a good first retrieval layer, but agents eventually need richer queries such as decisions by product, lessons by repo, and cross-repo concept comparison.
+The repository already separates memory by organization, product, domain, repo, spec, ADR, runbook, glossary, and proposal scope. The local stack publishes immutable snapshots, which is a good first retrieval layer, but agents eventually need richer queries such as decisions by product, lessons by repo, and cross-repo concept comparison.
 
 ## Rationale
 
@@ -56,9 +55,8 @@ The repository already separates memory by organization, product, domain, repo, 
 
 ## Deployment options
 
-- Local: FastAPI, filesystem raw storage, and SQLite or Postgres metadata.
-- AWS: API Gateway, Lambda, S3 raw files, DynamoDB metadata, and a derived search layer.
-- Vector retrieval may use OpenSearch Serverless Vector Search, Bedrock Knowledge Bases, or another provider, as long as embeddings remain rebuildable from canonical and raw sources.
+- Local: filesystem raw storage and SQLite or Postgres metadata.
+- Vector retrieval may use any local or remote provider, as long as embeddings remain rebuildable from canonical and raw sources.
 
 ## Alternatives rejected
 
@@ -71,4 +69,4 @@ The repository already separates memory by organization, product, domain, repo, 
 - The roadmap stays incremental: capture first, index second, MCP consumption third.
 - Search indexes can be rebuilt after schema, embedding model, or provider changes.
 - Agents get a stable retrieval surface without bypassing memory governance.
-- The central backend remains compatible with the existing append-only snapshot contract.
+- The local stack remains compatible with the existing append-only snapshot contract.

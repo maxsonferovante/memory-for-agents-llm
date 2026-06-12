@@ -7,7 +7,6 @@ owner: cross-repo-coordinator
 source:
   - ../../../knowledge/_proposals/2026-06-11-structured-memory-mcp/02-memory-indexing-mcp-contract.md
   - ../../../knowledge/adr/structured-memory-mcp-roadmap.md
-  - ../../../knowledge/integrations/central-memory-backend.md
   - ../../../hooks/README.md
 supersedes: null
 ---
@@ -20,7 +19,7 @@ Define how memory events, structured indexes, vector indexes, and MCP consumptio
 
 ## Phase 1: capture reliable events
 
-Hooks and memory-producing agents may send backend events after session stops, ready proposals, promoted memory, and repo handoffs.
+Hooks and memory-producing agents may send local stack events after session stops, ready proposals, promoted memory, and repo handoffs.
 
 ```json
 {
@@ -128,5 +127,5 @@ Prompts should instruct agents to consult MCP memory before broad repository exp
 ## Implementation notes
 
 - The local path can use FastAPI, filesystem raw storage, and SQLite or Postgres.
-- The AWS path can use API Gateway, Lambda, S3 raw files, DynamoDB metadata, and OpenSearch Serverless Vector Search or Bedrock Knowledge Bases for derived retrieval.
+- The stack can use any derived retrieval provider, as long as raw storage and canonical Markdown remain the rebuildable source of truth.
 - The indexer should be asynchronous so hook latency is not coupled to summarization or embedding latency.

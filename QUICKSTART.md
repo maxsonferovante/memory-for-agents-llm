@@ -23,35 +23,16 @@ py -3 scripts/install_claude_assets.py               # Windows
 
 The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files.
 
-## Public release flow
+## Local stack flow
 
-To build a versioned release artifact and install it from a path or URL:
-
-```bash
-python3 scripts/package_release.py --version v0.1.0
-python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run
-python3 scripts/install_public_release.py --source https://example.com/releases/memory-for-agents-llm-v0.1.0.tar.gz
-```
-
-Use `--include-knowledge` with the packaging script when you want the full memory reference package instead of the runtime-only package.
-
-## Backend deployment flow
-
-To build and deploy the self-hosted AWS memory backend in one release flow:
+To run the local memory stack end to end:
 
 ```bash
-export AWS_PROFILE=your-profile
-export AWS_REGION=us-east-1
-export API_KEY_VALUE=replace-with-a-secret
-python3 scripts/release_central_memory_backend.py --aws-region "${AWS_REGION}" --api-key-value "${API_KEY_VALUE}" --auto-approve
-source dist/backend/central-memory-backend/backend.env
-echo "$API_BASE_URL"
-echo "$API_KEY_HEADER"
-python3 scripts/smoke_test_central_memory_backend.py --env-file dist/backend/central-memory-backend/backend.env
+docker compose up --build
+python3 scripts/smoke_test_local_memory_stack.py
 ```
 
-If you set a `backend_auth_token`, export `BACKEND_AUTH_TOKEN=...` before running the release script. The script writes that value into `dist/backend/central-memory-backend/backend.env` so the local client can reuse the same auth contract.
-The hook runtime also loads that same `backend.env` automatically when present.
+The smoke test posts a hook event, waits for indexing, and verifies the generated memory item.
 
 ## Pull request automation
 

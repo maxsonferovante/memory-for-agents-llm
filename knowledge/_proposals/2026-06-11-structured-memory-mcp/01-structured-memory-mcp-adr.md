@@ -13,7 +13,7 @@ confidence: high
 
 ## Problem
 
-The central memory backend currently gives agents a durable snapshot store, but the next evolution needs search, structured retrieval, and cross-repo consumption without replacing the reviewed Markdown knowledge base with an opaque vector database.
+The local memory stack currently gives agents a durable snapshot store, but the next evolution needs search, structured retrieval, and cross-repo consumption without replacing the reviewed Markdown knowledge base with an opaque vector database.
 
 ## Proposal
 
@@ -63,20 +63,17 @@ Claude Code / Agents
 ## Consequences
 
 - The decision records a staged evolution rather than a one-step RAG migration.
-- The backend roadmap stays incremental: capture first, index later, expose through MCP after the retrieval contract is stable.
+- The roadmap stays incremental: capture first, index later, expose through MCP after the retrieval contract is stable.
 - Raw storage and canonical Markdown provide rebuildability if a vector provider or schema changes.
-- The system can run locally with FastAPI plus filesystem plus SQLite/Postgres, or in AWS with API Gateway plus Lambda plus S3 plus DynamoDB.
-- Search providers such as OpenSearch Serverless Vector Search or Bedrock Knowledge Bases are implementation options, not architectural sources of truth.
+- The system can run locally with filesystem raw storage and SQLite or Postgres metadata.
+- Search providers are implementation options, not architectural sources of truth.
 
 ## Sources
 
 - [knowledge/README.md](../../../knowledge/README.md)
-- [knowledge/integrations/central-memory-backend.md](../../../knowledge/integrations/central-memory-backend.md)
-- [knowledge/adr/central-memory-backend.md](../../../knowledge/adr/central-memory-backend.md)
 - [knowledge/org/memory-governance.md](../../../knowledge/org/memory-governance.md)
 - [knowledge/org/context-pack-contract.md](../../../knowledge/org/context-pack-contract.md)
 - [knowledge/products/claude-code-memory-platform/shared-memory-contract.md](../../../knowledge/products/claude-code-memory-platform/shared-memory-contract.md)
-- [AWS OpenSearch Serverless vector search documentation](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-vector-search.html)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-03-26)
 
 ## Acceptance criteria
@@ -85,4 +82,4 @@ Claude Code / Agents
 - The roadmap separates capture, processing, indexing, and MCP consumption.
 - Structured memory and vector memory are defined as derived stores.
 - The MCP boundary exposes retrieval capabilities without becoming the persistence layer.
-- The design supports both local and AWS deployments.
+- The design keeps the deployment path local-first and provider-agnostic.
