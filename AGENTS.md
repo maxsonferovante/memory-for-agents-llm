@@ -1,13 +1,15 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is the phase-1 reference for Claude Code memory and agent orchestration. Keep durable knowledge in `knowledge/`, not in chat logs. The most important areas are:
+This repository is the phase-1 reference for coding-agent memory and orchestration across Claude Code, Codex, and future agent clients. Keep durable knowledge in `knowledge/`, not in chat logs. The most important areas are:
 
 - `knowledge/org/`: org-wide policies and memory contracts
 - `knowledge/products/`: product-level shared behavior
 - `knowledge/repos/`: repo-specific conventions and overrides
 - `knowledge/_proposals/`: draft updates before promotion
-- `hooks/`: enforcement and promotion hooks
+- `hooks/`: shared enforcement, ingestion, and promotion hooks
+- `.claude/`: Claude Code agents, rules, skills, and templates
+- `.codex/`: Codex project config, MCP config, hooks, custom agents, and skills
 - `scripts/`: install, packaging, and smoke-test utilities
 - `local_stack/`: fully local Rust/Python ingest/index/MCP stack
 
@@ -35,4 +37,4 @@ Name new smoke inputs and proposal files so they are easy to trace back to the f
 Commit history uses short conventional prefixes such as `feat:`, `fix:`, `docs:`, and `chore:`. Keep commits focused and descriptive, for example `docs: add architecture brief`. Pull requests should explain the behavior change, list validation performed, and link any related proposal or issue. Include screenshots only when the change affects rendered docs or UI-like output.
 
 ## Agent-Specific Instructions
-Keep the main conversation small. Use `knowledge/_proposals/` for draft facts, and promote to canonical docs only after validation. If a change affects shared behavior, update the relevant higher-scope note first and link back from repo-local notes.
+Keep the main conversation small. Codex should use `.codex/config.toml`, `.codex/hooks.json`, and `.codex/agents/*.toml`; Claude Code should use `.claude/` and the Claude installer. Use `knowledge/_proposals/` for draft facts, and promote to canonical docs only after validation. If a change affects shared behavior, update the relevant higher-scope note first and link back from repo-local notes.

@@ -125,35 +125,46 @@ def infer_event_type(path_text: str | None, content: str | None) -> str:
     return "session_stop"
 
 
-def build_event(payload: dict[str, object]) -> dict[str, object] | None:
+def build_event(
+    payload: dict[str, object], source: str, event_type: str | None = None
+) -> dict[str, object] | None:
     content = extract_content(payload)
     path_text = extract_path(payload)
-    if not content and not path_text:
+    if not content and not path_text and not event_type:
         return None
 
-    event_id = str(payload.get("id") or f"evt_{hashlib.sha256((content or path_text or utc_now()).encode('utf-8')).hexdigest()[:16]}")
+    event_id_seed = content or path_text or event_type or utc_now()
+    event_id = str(
+        payload.get("id")
+        or f"evt_{hashlib.sha256(event_id_seed.encode('utf-8')).hexdigest()[:16]}"
+    )
     repo = str(payload.get("repo") or detect_repo_name())
     branch = str(payload.get("branch") or detect_branch() or "")
     commit = str(payload.get("commit_sha") or detect_commit() or "")
     session_id = str(
         payload.get("session_id")
         or os.environ.get("CLAUDE_SESSION_ID")
+        or os.environ.get("CODEX_SESSION_ID")
         or os.environ.get("SESSION_ID")
         or ""
     )
 
     event = {
         "id": event_id,
-        "event_type": str(payload.get("event_type") or infer_event_type(path_text, content)),
+        "event_type": str(
+            event_type or payload.get("event_type") or infer_event_type(path_text, content)
+        ),
         "repo": repo,
         "branch": branch or None,
         "commit_sha": commit or None,
         "file_path": path_text,
         "scope": str(payload.get("scope") or infer_scope(path_text)),
-        "source": "claude-code-hook",
+        "source": source,
         "session_id": session_id or None,
         "created_at": str(payload.get("created_at") or utc_now()),
-        "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest() if content else hashlib.sha256((path_text or event_id).encode("utf-8")).hexdigest(),
+        "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest()
+        if content
+        else hashlib.sha256((path_text or event_id).encode("utf-8")).hexdigest(),
         "content": content,
         "tool_name": payload.get("tool_name"),
     }
@@ -176,11 +187,20 @@ def post_event(url: str, event: dict[str, object]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Post Claude hook events to the local memory ingestion API.")
+    parser = argparse.ArgumentParser(description="Post agent hook events to the local memory ingestion API.")
     parser.add_argument(
         "--url",
         default=os.environ.get("MEMORY_INGEST_API_URL", DEFAULT_INGEST_URL),
         help="Memory ingest API URL.",
+    )
+    parser.add_argument(
+        "--source",
+        default=os.environ.get("MEMORY_HOOK_SOURCE", "claude-code-hook"),
+        help="Provenance source to write into the memory event.",
+    )
+    parser.add_argument(
+        "--event-type",
+        help="Override event_type for lifecycle hooks that do not include a file path.",
     )
     return parser.parse_args()
 
@@ -188,7 +208,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     payload = read_payload()
-    event = build_event(payload)
+    event = build_event(payload, source=args.source, event_type=args.event_type)
     if event is None:
         print("memory event poster: nothing to post", file=sys.stderr)
         return 0

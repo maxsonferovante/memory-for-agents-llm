@@ -1,0 +1,66 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_hook_runner.py\" guard-write",
+            "timeout": 30,
+            "statusMessage": "Checking memory write policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook",
+            "timeout": 30,
+            "statusMessage": "Posting memory event"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_hook_runner.py\" validate-promotion",
+            "timeout": 30,
+            "statusMessage": "Validating memory proposal"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-subagent-hook --event-type subagent_stop",
+            "timeout": 30,
+            "statusMessage": "Capturing subagent memory handoff"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --event-type session_stop",
+            "timeout": 30,
+            "statusMessage": "Capturing session memory handoff"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_hook_runner.py\" promote-ready",
+            "timeout": 60,
+            "statusMessage": "Promoting ready memory proposals"
+          }
+        ]
+      }
+    ]
+  }
+}

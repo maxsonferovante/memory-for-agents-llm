@@ -1,6 +1,6 @@
 # Knowledge store
 
-This directory is the durable knowledge layer for the repo. It is the canonical home for reusable facts that should survive across Claude Code sessions.
+This directory is the durable knowledge layer for the repo. It is the canonical home for reusable facts that should survive across Claude Code, Codex, and future agent sessions.
 
 ## What belongs here
 
@@ -18,7 +18,7 @@ This directory is the durable knowledge layer for the repo. It is the canonical 
 
 ## How knowledge moves
 
-1. Research with `context-researcher`.
+1. Research with `context-researcher` or the matching Codex `memory_context_researcher`.
 2. Capture the result as a proposal in `knowledge/_proposals/`.
 3. Curate the proposal with `memory-curator`.
 4. Promote the accepted note into the correct bucket.
@@ -39,6 +39,7 @@ This directory is the durable knowledge layer for the repo. It is the canonical 
 
 ## Local bootstrap
 
-- The repository ships [`scripts/install_claude_assets.py`](../scripts/install_claude_assets.py) to copy the repo agents, skills, and hook wiring into a local Claude config directory.
-- Run the installer with `--dry-run` first, then without flags for a real install.
+- Claude Code: use [`scripts/install_claude_assets.py`](../scripts/install_claude_assets.py) to copy repo agents, skills, and hook wiring into a local Claude config directory.
+- Codex: use the repo-local [`.codex/`](../.codex/) project layer for config, hooks, custom agents, skills, and MCP consumption.
+- Run Claude installation with `--dry-run` first, then without flags for a real install.
 - Use `--force` only when you intentionally want to overwrite differing local files.
