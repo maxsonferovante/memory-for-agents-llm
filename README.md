@@ -27,16 +27,18 @@ This repository is the reference for a coding-agent memory system that works acr
 - `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code operating rules.
 - `.claude/rules/` for Claude path-aware rules and lifecycle constraints.
 - `.claude/agents/` and `.codex/agents/` for specialized subagents.
+- `.agents/skills/` for repo-scoped Codex skills.
 - `.claude/templates/` for session-ready prompts.
 - `.codex/config.toml` for project-scoped Codex model, subagent, and MCP settings.
 - `.codex/hooks.json` and `hooks/` for Codex lifecycle enforcement, event capture, and automatic curation.
-- `.claude/skills/` and `.codex/skills/` for reusable workflows.
+- `.claude/skills/` and `.agents/skills/` for reusable workflows.
 - `.github/workflows/` for repo automation such as auto-opening pull requests.
 - `.github/pull_request_template.md` for the default PR body.
 
 ## Local bootstrap
 
-- Codex can use the repo-local `.codex/` layer directly after the project is trusted; no copy step is required for project-scoped agents, hooks, or MCP config.
+- Codex can use the repo-local `.codex/` and `.agents/skills/` layers directly after the project is trusted.
+- `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations.
 - `scripts/install_claude_assets.py` installs the repo agents, skills, and hook wiring into the local Claude Code config directory.
 - The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
 - It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
@@ -94,7 +96,8 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 - `.codex/config.toml` enables hooks, limits subagent fan-out, and registers both `localMemory` and `openaiDeveloperDocs` MCP servers.
 - `.codex/hooks.json` maps Codex lifecycle events to canonical-write guards, proposal validation, ready-proposal promotion, and ingestion events with `source = codex-code-hook`.
 - `.codex/agents/*.toml` defines focused custom agents: coordinator, context researcher, spec analyst, architect, implementer, reviewer, curator, and cross-repo coordinator.
-- `.codex/skills/` mirrors the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions.
+- `.agents/skills/` exposes the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions from the correct repo-scoped skill path.
+- `scripts/install_codex_assets.py` can also copy those skills into the user-level `~/.agents/skills` directory for global use.
 - The local memory MCP server remains the shared read layer; Markdown remains the source of truth.
 
 ## Local mini stack
@@ -108,6 +111,8 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 
 - `python3 scripts/install_claude_assets.py --dry-run`
 - `python3 scripts/install_claude_assets.py --force`
+- `python3 scripts/install_codex_assets.py --dry-run`
+- `python3 scripts/install_codex_assets.py --force`
 - `python3 scripts/package_release.py --version v0.1.0`
 - `python3 scripts/package_release.py --version v0.1.0 --include-knowledge`
 - `python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run`

@@ -171,7 +171,7 @@ def build_event(
     return event
 
 
-def post_event(url: str, event: dict[str, object]) -> None:
+def post_event(url: str, event: dict[str, object], ignore_errors: bool = False) -> None:
     body = json.dumps(event, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(
         url,
@@ -183,11 +183,16 @@ def post_event(url: str, event: dict[str, object]) -> None:
         with urllib_request.urlopen(request, timeout=10) as response:
             response.read()
     except urllib_error.URLError as exc:
+        if ignore_errors:
+            print(f"memory event poster: failed to post to {url}: {exc}", file=sys.stderr)
+            return
         raise SystemExit(f"failed to post memory event to {url}: {exc}") from exc
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Post agent hook events to the local memory ingestion API.")
+    parser = argparse.ArgumentParser(
+        description="Post agent hook events to the local memory ingestion API."
+    )
     parser.add_argument(
         "--url",
         default=os.environ.get("MEMORY_INGEST_API_URL", DEFAULT_INGEST_URL),
@@ -202,6 +207,11 @@ def parse_args() -> argparse.Namespace:
         "--event-type",
         help="Override event_type for lifecycle hooks that do not include a file path.",
     )
+    parser.add_argument(
+        "--ignore-errors",
+        action="store_true",
+        help="Log ingestion failures without failing the hook command.",
+    )
     return parser.parse_args()
 
 
@@ -212,7 +222,7 @@ def main() -> int:
     if event is None:
         print("memory event poster: nothing to post", file=sys.stderr)
         return 0
-    post_event(args.url, event)
+    post_event(args.url, event, ignore_errors=args.ignore_errors)
     return 0
 
 

@@ -45,7 +45,7 @@ python3 scripts/smoke_test_local_memory_stack.py
 
 ## Codex MCP consumption
 
-The repo-scoped Codex config registers `localMemory` as a STDIO MCP server:
+The repo-scoped Codex config registers `localMemory` as a STDIO MCP server. The global installer writes an equivalent user-level `~/.codex/config.toml` entry with absolute paths:
 
 ```toml
 [mcp_servers.localMemory]

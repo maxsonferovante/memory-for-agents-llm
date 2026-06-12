@@ -13,7 +13,16 @@ This repo is the phase-1 reference for coding-agent memory and orchestration acr
 
 ## Optional bootstrap
 
-Codex reads the repo-local `.codex/` project layer after you trust the project; no copy step is required for project-scoped Codex agents, hooks, skills, or MCP config.
+Codex reads the repo-local `.codex/` project layer and `.agents/skills/` after you trust the project. For global Codex setup across repositories, install the assets into the user-level Codex locations:
+
+```bash
+python3 scripts/install_codex_assets.py --dry-run  # macOS/Linux
+py -3 scripts/install_codex_assets.py --dry-run     # Windows
+python3 scripts/install_codex_assets.py             # macOS/Linux
+py -3 scripts/install_codex_assets.py               # Windows
+```
+
+The Codex installer detects the OS, writes config under `~/.codex` by default, installs user skills under `~/.agents/skills`, and supports `--config-dir`, `--skills-dir`, `--force`, and `--dry-run`.
 
 If you want the local Claude Code config to receive the repo agents, skills, and hooks in one pass, run:
 
@@ -47,7 +56,7 @@ Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATI
 - `knowledge/` stores durable memory.
 - `knowledge/_proposals/` is the staging area before promotion.
 - `CLAUDE.md`, `.claude/rules/`, `.claude/agents/`, `.claude/templates/`, `.claude/skills/`, and `hooks/` define how Claude Code behaves in this repo.
-- `CODEX.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/agents/`, `.codex/skills/`, and `hooks/` define how Codex behaves in this repo.
+- `CODEX.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/agents/`, `.agents/skills/`, and `hooks/` define how Codex behaves in this repo.
 - `.github/workflows/` and `.github/pull_request_template.md` automate pull request creation for `feature/*` branches.
 
 ## Standard flow

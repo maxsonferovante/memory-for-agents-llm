@@ -23,6 +23,7 @@ BASE_PATHS = [
     "README.md",
     ".claude",
     ".codex",
+    ".agents",
     "hooks",
     "local_stack",
     "scripts",

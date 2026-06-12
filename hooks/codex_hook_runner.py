@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -56,9 +57,22 @@ def run_memory_hooks(argv: list[str]) -> int:
         return 1
 
     repo_root = Path.cwd()
-    hooks_script = repo_root / "hooks" / "memory_hooks.py"
-    if not hooks_script.exists():
-        print(f"codex hook runner: missing {hooks_script}", file=sys.stderr)
+    configured_hooks_script = os.environ.get("MEMORY_HOOKS_SCRIPT")
+    candidate_hooks = [
+        Path(configured_hooks_script).expanduser() if configured_hooks_script else None,
+        Path(__file__).resolve().with_name("memory_hooks.py"),
+        repo_root / "hooks" / "memory_hooks.py",
+    ]
+    hooks_script = next(
+        (
+            candidate
+            for candidate in candidate_hooks
+            if candidate is not None and candidate.exists()
+        ),
+        None,
+    )
+    if hooks_script is None:
+        print("codex hook runner: missing memory_hooks.py", file=sys.stderr)
         return 1
 
     payload = read_payload()

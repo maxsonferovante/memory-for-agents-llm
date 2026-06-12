@@ -40,7 +40,8 @@ The Codex adapter includes:
 - `.codex/config.toml` for model defaults, subagent limits, and MCP servers.
 - `.codex/hooks.json` for lifecycle hooks.
 - `.codex/agents/*.toml` for custom agents.
-- `.codex/skills/*/SKILL.md` for reusable memory workflows.
+- `.agents/skills/*/SKILL.md` for repo-scoped reusable memory workflows.
+- `scripts/install_codex_assets.py` for global Codex installation into `~/.codex`, `~/.codex/agents`, `~/.codex/hooks.json`, and `~/.agents/skills`.
 - `hooks/codex_hook_runner.py` for Codex-safe policy enforcement and promotion commands.
 
 ## Hook events
@@ -72,5 +73,6 @@ Codex should use the `localMemory` MCP server before broad repository exploratio
 - [x] Codex has project-scoped config for MCP and subagent limits.
 - [x] Codex has custom agents that mirror the shared memory workflow roles.
 - [x] Codex hooks can guard canonical writes, validate proposals, post ingestion events, and promote ready proposals.
+- [x] Codex has a global installer for agents, subagent limits, skills, hooks, and MCP config.
 - [x] Shared hooks can preserve per-client provenance.
 - [x] Documentation describes the project as a broad agent memory system rather than a Claude-only system.

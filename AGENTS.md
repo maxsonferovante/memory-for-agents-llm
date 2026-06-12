@@ -9,13 +9,16 @@ This repository is the phase-1 reference for coding-agent memory and orchestrati
 - `knowledge/_proposals/`: draft updates before promotion
 - `hooks/`: shared enforcement, ingestion, and promotion hooks
 - `.claude/`: Claude Code agents, rules, skills, and templates
-- `.codex/`: Codex project config, MCP config, hooks, custom agents, and skills
+- `.codex/`: Codex project config, MCP config, hooks, and custom agents
+- `.agents/skills/`: repo-scoped Codex skills discovered from any subdirectory
 - `scripts/`: install, packaging, and smoke-test utilities
 - `local_stack/`: fully local Rust/Python ingest/index/MCP stack
 
 ## Build, Test, and Development Commands
 - `python3 scripts/install_claude_assets.py --dry-run`: preview local Claude config installation
 - `python3 scripts/install_claude_assets.py`: install repo agents, skills, and hooks
+- `python3 scripts/install_codex_assets.py --dry-run`: preview global Codex config installation
+- `python3 scripts/install_codex_assets.py`: install Codex agents, skills, hooks, and MCP config globally
 - `docker compose up --build`: start the local memory stack
 - `python3 scripts/smoke_test_local_memory_stack.py`: run the end-to-end local ingest/index smoke test
 - `python3 hooks/memory_hooks.py validate-proposal <path>`: validate a proposal before promotion
@@ -37,4 +40,4 @@ Name new smoke inputs and proposal files so they are easy to trace back to the f
 Commit history uses short conventional prefixes such as `feat:`, `fix:`, `docs:`, and `chore:`. Keep commits focused and descriptive, for example `docs: add architecture brief`. Pull requests should explain the behavior change, list validation performed, and link any related proposal or issue. Include screenshots only when the change affects rendered docs or UI-like output.
 
 ## Agent-Specific Instructions
-Keep the main conversation small. Codex should use `.codex/config.toml`, `.codex/hooks.json`, and `.codex/agents/*.toml`; Claude Code should use `.claude/` and the Claude installer. Use `knowledge/_proposals/` for draft facts, and promote to canonical docs only after validation. If a change affects shared behavior, update the relevant higher-scope note first and link back from repo-local notes.
+Keep the main conversation small. Codex should use `.codex/config.toml`, `.codex/hooks.json`, `.codex/agents/*.toml`, and `.agents/skills/*/SKILL.md`; Claude Code should use `.claude/` and the Claude installer. Use `knowledge/_proposals/` for draft facts, and promote to canonical docs only after validation. If a change affects shared behavior, update the relevant higher-scope note first and link back from repo-local notes.

@@ -13,7 +13,8 @@ Use this file as the human-readable companion to `.codex/config.toml`, `.codex/h
 - `.codex/config.toml`: project model defaults, subagent limits, and MCP servers.
 - `.codex/hooks.json`: lifecycle hooks for write guards, proposal validation, ingestion, subagent handoffs, and ready-proposal promotion.
 - `.codex/agents/*.toml`: project custom agents for memory orchestration.
-- `.codex/skills/*/SKILL.md`: reusable memory workflows.
+- `.agents/skills/*/SKILL.md`: repo-scoped reusable memory workflows.
+- `scripts/install_codex_assets.py`: global installer for Codex agents, skills, hooks, and MCP config.
 
 ## Memory rules
 

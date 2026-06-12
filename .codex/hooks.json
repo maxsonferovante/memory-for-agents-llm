@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --ignore-errors",
             "timeout": 30,
             "statusMessage": "Posting memory event"
           },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-subagent-hook --event-type subagent_stop",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-subagent-hook --event-type subagent_stop --ignore-errors",
             "timeout": 30,
             "statusMessage": "Capturing subagent memory handoff"
           }
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --event-type session_stop",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --ignore-errors --event-type session_stop",
             "timeout": 30,
             "statusMessage": "Capturing session memory handoff"
           },
