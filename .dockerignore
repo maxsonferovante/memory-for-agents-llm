@@ -1,0 +1,11 @@
+**
+!local_stack/
+!local_stack/__init__.py
+!local_stack/config.py
+!local_stack/markdown.py
+!local_stack/storage.py
+!local_stack/api.py
+!local_stack/worker.py
+!local_stack/requirements.txt
+!.dockerignore
+!docker-compose.yml

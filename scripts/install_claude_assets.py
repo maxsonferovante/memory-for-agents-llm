@@ -255,11 +255,14 @@ def build_hook_entry(command: str, matcher: str | None = None) -> dict:
     return entry
 
 
-def update_settings(settings_path: Path, runner_path: Path, dry_run: bool) -> str:
+def update_settings(settings_path: Path, runner_path: Path, package_hooks_dir: Path, dry_run: bool) -> str:
     settings = read_json(settings_path)
 
     hook_command_base = quote_command(
         [Path(sys.executable).as_posix(), runner_path.as_posix()]
+    )
+    event_command = quote_command(
+        [Path(sys.executable).as_posix(), (package_hooks_dir / "memory_event_poster.py").as_posix()]
     )
 
     changed = False
@@ -267,6 +270,16 @@ def update_settings(settings_path: Path, runner_path: Path, dry_run: bool) -> st
         settings,
         "PreToolUse",
         build_hook_entry(f"{hook_command_base} guard-write", HOOK_MATCHER),
+    )
+    changed |= merge_hook(
+        settings,
+        "PostToolUse",
+        build_hook_entry(f"{event_command}", HOOK_MATCHER),
+    )
+    changed |= merge_hook(
+        settings,
+        "Stop",
+        build_hook_entry(f"{event_command}", ""),
     )
     changed |= merge_hook(
         settings,
@@ -335,7 +348,14 @@ def main() -> int:
     actions.extend(copy_tree(source_skills, claude_home / "skills", args.force, args.dry_run))
     actions.extend(copy_tree(source_hooks, package_hooks_dir, args.force, args.dry_run))
     actions.append(ensure_hook_runner(package_hooks_dir, args.dry_run))
-    actions.append(update_settings(claude_home / "settings.json", package_hooks_dir / "claude_hook_runner.py", args.dry_run))
+    actions.append(
+        update_settings(
+            claude_home / "settings.json",
+            package_hooks_dir / "claude_hook_runner.py",
+            package_hooks_dir,
+            args.dry_run,
+        )
+    )
 
     print(f"Claude config directory: {claude_home}")
     print(f"Package root: {package_root}")
