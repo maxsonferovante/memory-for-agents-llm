@@ -4,6 +4,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 
 ## Read this first
 
+1. `AGENTS.md`
 1. `README.md`
 2. `CLAUDE.md`
 3. `knowledge/README.md`
