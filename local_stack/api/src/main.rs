@@ -241,6 +241,7 @@ fn inferred_scope(payload: &IngestEventRequest) -> String {
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!(data_dir = %state.data_dir.display(), "health check");
     Json(HealthResponse {
         status: "ok".to_string(),
         service: "local-memory-api".to_string(),
@@ -265,6 +266,19 @@ async fn ingest_event(
         hasher.update(content.as_deref().unwrap_or(payload.file_path.as_deref().unwrap_or(&event_id)).as_bytes());
         hex::encode(hasher.finalize())
     });
+    let content_len = content.as_ref().map(|text| text.len()).unwrap_or(0);
+
+    tracing::info!(
+        event_id = %event_id,
+        event_type = %event_type,
+        repo = %payload.repo,
+        scope = %scope,
+        source = ?payload.source,
+        session_id = ?payload.session_id,
+        file_path = ?payload.file_path,
+        content_len,
+        "ingest request received"
+    );
 
     let event_dir = state.raw_dir.join(payload.repo.clone()).join(&event_id);
     fs::create_dir_all(&event_dir)
@@ -347,6 +361,13 @@ async fn ingest_event(
         .await
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
+    tracing::info!(
+        event_id = %event_id,
+        raw_payload_path = %raw_payload_path_text,
+        raw_markdown_path = ?raw_markdown_path_text,
+        "ingest request queued"
+    );
+
     Ok((
         StatusCode::ACCEPTED,
         Json(SimpleResponse {
@@ -365,6 +386,7 @@ async fn list_events(State(state): State<Arc<AppState>>) -> Result<Json<ItemsRes
     .fetch_all(&state.pool)
     .await
     .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed ingest events");
     Ok(Json(ItemsResponse { items }))
 }
 
@@ -375,6 +397,7 @@ async fn list_items(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResp
     .fetch_all(&state.pool)
     .await
     .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed memory items");
     Ok(Json(ItemsResponse { items }))
 }
 
@@ -385,13 +408,17 @@ async fn list_chunks(State(state): State<Arc<AppState>>) -> Result<Json<ItemsRes
     .fetch_all(&state.pool)
     .await
     .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed memory chunks");
     Ok(Json(ItemsResponse { items }))
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,sqlx=warn,tower_http=warn")),
+        )
         .json()
         .with_current_span(false)
         .init();
@@ -401,15 +428,32 @@ async fn main() {
     let raw_dir = PathBuf::from(env::var("MEMORY_RAW_DIR").unwrap_or_else(|_| data_dir.join("raw").display().to_string()));
     let database_url = env::var("MEMORY_DATABASE_URL")
         .unwrap_or_else(|_| panic!("MEMORY_DATABASE_URL is required"));
+    let sanitized_database_url = if let Some((prefix, _)) = database_url.rsplit_once('@') {
+        format!("{prefix}@<redacted>")
+    } else {
+        "<redacted>".to_string()
+    };
+
+    tracing::info!(
+        bind = %bind,
+        data_dir = %data_dir.display(),
+        raw_dir = %raw_dir.display(),
+        database_url = %sanitized_database_url,
+        "starting local memory api"
+    );
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await
         .unwrap_or_else(|err| panic!("failed to connect to database: {err}"));
 
+    tracing::info!("database connection established");
+
     initialize_schema(&pool)
         .await
         .unwrap_or_else(|err| panic!("failed to initialize schema: {err}"));
+    tracing::info!("database schema initialized");
 
     fs::create_dir_all(&raw_dir)
         .await
@@ -417,6 +461,7 @@ async fn main() {
     fs::create_dir_all(data_dir.join("derived"))
         .await
         .unwrap_or_else(|err| panic!("failed to create derived dir: {err}"));
+    tracing::info!(derived_dir = %data_dir.join("derived").display(), "filesystem directories ensured");
 
     let state = Arc::new(AppState {
         pool,

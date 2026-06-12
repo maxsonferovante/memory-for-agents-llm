@@ -18,6 +18,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::stdin;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
 struct MemoryServer {
@@ -141,10 +142,18 @@ fn cosine_similarity(left: &[f64], right: &[f64]) -> f64 {
 }
 
 fn load_index(path: &Path) -> Result<MemoryIndex> {
+    tracing::debug!(index_path = %path.display(), "loading memory index");
     let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read index file {}", path.display()))?;
     let index: MemoryIndex = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse index file {}", path.display()))?;
+    tracing::debug!(
+        index_path = %path.display(),
+        items = index.items.len(),
+        chunks = index.chunks.len(),
+        generated_at = %index.generated_at,
+        "memory index loaded"
+    );
     Ok(index)
 }
 
@@ -194,6 +203,14 @@ fn item_chunks<'a>(index: &'a MemoryIndex, item_id: &str) -> Vec<&'a MemoryChunk
 impl MemoryServer {
     #[tool(description = "Search the local memory index by query, repo, scope, and kind")]
     fn search_memory(&self, Parameters(args): Parameters<SearchArgs>) -> Result<String, McpError> {
+        tracing::info!(
+            query = %args.query,
+            repo = ?args.repo,
+            scope = ?args.scope,
+            kind = ?args.kind,
+            limit = args.limit.unwrap_or(10),
+            "mcp search_memory called"
+        );
         let index = load_index(&self.index_path)
             .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
                 "message": error.to_string(),
@@ -229,6 +246,7 @@ impl MemoryServer {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         results.truncate(limit);
+        tracing::info!(count = results.len(), "mcp search_memory completed");
         Ok(serde_json::json!({
             "query": args.query,
             "count": results.len(),
@@ -239,6 +257,7 @@ impl MemoryServer {
 
     #[tool(description = "Get one structured memory item and its chunks by id")]
     fn get_memory_item(&self, Parameters(args): Parameters<ItemArgs>) -> Result<String, McpError> {
+        tracing::info!(item_id = %args.id, "mcp get_memory_item called");
         let index = load_index(&self.index_path)
             .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
                 "message": error.to_string(),
@@ -251,6 +270,7 @@ impl MemoryServer {
                 "id": args.id,
             }))))?;
         let chunks = item_chunks(&index, &item.id);
+        tracing::info!(item_id = %item.id, chunk_count = chunks.len(), "mcp get_memory_item completed");
         Ok(serde_json::json!({
             "item": item,
             "chunks": chunks,
@@ -263,6 +283,7 @@ impl MemoryServer {
         &self,
         Parameters(args): Parameters<ResourceArgs>,
     ) -> Result<String, McpError> {
+        tracing::info!(repo = %args.repo, "mcp get_repo_context_pack called");
         let index = load_index(&self.index_path)
             .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
                 "message": error.to_string(),
@@ -272,6 +293,7 @@ impl MemoryServer {
             .iter()
             .filter(|item| item.repo == args.repo)
             .collect();
+        tracing::info!(repo = %args.repo, item_count = items.len(), "mcp get_repo_context_pack completed");
         Ok(serde_json::json!({
             "repo": args.repo,
             "generated_at": index.generated_at,
@@ -299,6 +321,7 @@ impl ServerHandler for MemoryServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
+        tracing::debug!("mcp list_resources called");
         let index = load_index(&self.index_path)
             .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
                 "message": error.to_string(),
@@ -312,6 +335,7 @@ impl ServerHandler for MemoryServer {
                     .no_annotation(),
             );
         }
+        tracing::info!(resource_count = resources.len(), "mcp list_resources completed");
         Ok(ListResourcesResult {
             resources,
             next_cursor: None,
@@ -324,6 +348,7 @@ impl ServerHandler for MemoryServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
+        tracing::info!(uri = %request.uri, "mcp read_resource called");
         let index = load_index(&self.index_path)
             .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
                 "message": error.to_string(),
@@ -362,6 +387,7 @@ impl ServerHandler for MemoryServer {
                         )
                     })?;
                 let chunks = item_chunks(&index, &item.id);
+                tracing::info!(uri = %request.uri, chunk_count = chunks.len(), "mcp read_resource item resolved");
                 Ok(ReadResourceResult {
                     contents: vec![ResourceContents::text(
                         serde_json::json!({
@@ -397,10 +423,21 @@ impl ServerHandler for MemoryServer {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,rmcp=warn")),
+        )
+        .json()
+        .with_current_span(false)
+        .init();
+
     let index_path = env::var("MEMORY_INDEX_PATH").unwrap_or_else(|_| "/data/derived/index.json".into());
+    tracing::info!(index_path = %index_path, "starting memory mcp server");
     let server = MemoryServer::new(PathBuf::from(index_path));
 
     let service = server.serve((stdin(), tokio::io::stdout())).await?;
+    tracing::info!("memory mcp server ready");
     service.waiting().await?;
     Ok(())
 }

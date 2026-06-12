@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import time
 import uuid
 from contextlib import closing
@@ -32,17 +34,25 @@ from local_stack.storage import (
 
 settings = load_settings()
 db = None
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("MEMORY_LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("local_stack.worker")
 
 
 def _bootstrap_database() -> None:
     last_error: Exception | None = None
-    for _ in range(60):
+    logger.info("bootstrapping worker database connection")
+    for attempt in range(1, 61):
         try:
             with closing(connect(settings.db_path)) as bootstrap_db:
                 initialize(bootstrap_db)
+            logger.info("worker database bootstrap complete")
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
+            logger.warning("worker database not ready yet: attempt=%s error=%s", attempt, exc)
             time.sleep(1)
     raise SystemExit(f"database not ready: {last_error}")
 
@@ -96,6 +106,14 @@ def _provenance(event: dict[str, object]) -> dict[str, object]:
 
 
 def _index_event(event: dict[str, object]) -> None:
+    event_id = str(event.get("id") or "unknown")
+    logger.info(
+        "indexing event id=%s type=%s repo=%s scope=%s",
+        event_id,
+        str(event.get("event_type") or "unknown"),
+        str(event.get("repo") or "unknown"),
+        str(event.get("scope") or "repo"),
+    )
     text = _event_text(event).strip()
     if not text:
         raise ValueError("event has no markdown content")
@@ -184,28 +202,43 @@ def _index_event(event: dict[str, object]) -> None:
         )
 
     replace_chunks(db, item_id, chunks_data)
+    logger.info(
+        "indexed event id=%s into memory_item=%s chunks=%s title=%r",
+        event_id,
+        item_id,
+        len(chunks_data),
+        title,
+    )
     export_index(db, settings.index_path)
+    logger.info("exported derived index path=%s", settings.index_path)
 
 
 def main() -> int:
     global db
     _bootstrap_database()
     db = connect(settings.db_path)
-    print("local memory worker started", flush=True)
+    logger.info(
+        "local memory worker started db_path=%s index_path=%s poll_seconds=%s max_chunk_chars=%s",
+        settings.db_path,
+        settings.index_path,
+        settings.worker_poll_seconds,
+        settings.max_chunk_chars,
+    )
     while True:
         job = claim_next_job(db)
         if job is None:
+            logger.debug("no pending job available")
             time.sleep(settings.worker_poll_seconds)
             continue
         try:
             _index_event(job)
             mark_job_complete(db, str(job["id"]))
             export_index(db, settings.index_path)
-            print(f"processed event {job['id']}", flush=True)
+            logger.info("processed event id=%s", job["id"])
         except Exception as exc:  # noqa: BLE001
             mark_job_failed(db, str(job["id"]), str(exc))
             export_index(db, settings.index_path)
-            print(f"failed event {job['id']}: {exc}", flush=True)
+            logger.exception("failed event id=%s", job["id"])
 
 
 if __name__ == "__main__":
