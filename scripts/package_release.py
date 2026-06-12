@@ -16,13 +16,16 @@ PACKAGE_NAME = "memory-for-agents-llm"
 DEFAULT_OUTPUT_DIR = "dist/releases"
 
 BASE_PATHS = [
+    "AGENTS.md",
     "CLAUDE.md",
+    "CODEX.md",
     "QUICKSTART.md",
     "README.md",
     ".claude",
-    "backend",
-    "infra",
+    ".codex",
+    ".agents",
     "hooks",
+    "local_stack",
     "scripts",
 ]
 

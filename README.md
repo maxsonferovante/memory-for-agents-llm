@@ -1,12 +1,13 @@
-# Claude memory architecture repo
+# Agent memory architecture repo
 
-This repository is the reference for a Claude Code memory system that works across sessions and across repos. It keeps transient conversation small and turns reusable knowledge into source-backed, versioned Markdown.
+This repository is the reference for a coding-agent memory system that works across sessions, across repos, and across agent runtimes. It keeps transient conversation small and turns reusable knowledge into source-backed, versioned Markdown. Claude Code and Codex are both first-class clients of the same canonical memory, ingestion hooks, and MCP read surface.
 
 ## Start here
 
 - [`AGENTS.md`](./AGENTS.md) for contributor guidance and repo-specific workflow notes.
 - [`QUICKSTART.md`](./QUICKSTART.md) for a one-page onboarding path.
 - [`local_stack/README.md`](./local_stack/README.md) for the minimal local Docker Compose implementation.
+- [`.codex/README.md`](./.codex/README.md) for Codex agents, hooks, MCP, and project config.
 
 ## What this project does now
 
@@ -22,17 +23,22 @@ This repository is the reference for a Claude Code memory system that works acro
 
 ## Operational layers
 
-- `CLAUDE.md` and `.claude/CLAUDE.md` for always-on operating rules.
-- `.claude/rules/` for path-aware rules and lifecycle constraints.
-- `.claude/agents/` for specialized subagents.
+- `AGENTS.md` for Codex and generic agent guidance.
+- `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code operating rules.
+- `.claude/rules/` for Claude path-aware rules and lifecycle constraints.
+- `.claude/agents/` and `.codex/agents/` for specialized subagents.
+- `.agents/skills/` for repo-scoped Codex skills.
 - `.claude/templates/` for session-ready prompts.
-- `hooks/` for enforcement and automatic curation.
-- `.claude/skills/` for reusable workflows.
+- `.codex/config.toml` for project-scoped Codex model, subagent, and MCP settings.
+- `.codex/hooks.json` and `hooks/` for Codex lifecycle enforcement, event capture, and automatic curation.
+- `.claude/skills/` and `.agents/skills/` for reusable workflows.
 - `.github/workflows/` for repo automation such as auto-opening pull requests.
 - `.github/pull_request_template.md` for the default PR body.
 
 ## Local bootstrap
 
+- Codex can use the repo-local `.codex/` and `.agents/skills/` layers directly after the project is trusted.
+- `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations.
 - `scripts/install_claude_assets.py` installs the repo agents, skills, and hook wiring into the local Claude Code config directory.
 - The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
 - It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
@@ -49,6 +55,8 @@ This repository is the reference for a Claude Code memory system that works acro
 
 ## Available agents
 
+### Shared specialist roles
+
 - `coordinator` keeps the main session small and orchestrates the flow.
 - `context-researcher` gathers the minimum source-backed context and returns a `Context Pack`.
 - `spec-analyst` turns a request into an SDD-ready spec.
@@ -58,6 +66,8 @@ This repository is the reference for a Claude Code memory system that works acro
 - `incident-analyst` converts incidents into postmortems, runbooks, and lessons learned.
 - `memory-curator` promotes durable learnings into canonical docs.
 - `cross-repo-coordinator` synchronizes shared changes across repositories.
+
+Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.codex/agents/*.toml` using Codex custom-agent schema.
 
 ## Session templates
 
@@ -78,8 +88,17 @@ This repository is the reference for a Claude Code memory system that works acro
 - `PreToolUse` blocks unsafe direct writes to canonical knowledge.
 - `PostToolUse` validates whether new memory artifacts are ready for curation.
 - `Stop` promotes proposals marked `ready` into canonical knowledge.
-- The hook utility lives at [`hooks/memory_hooks.py`](./hooks/memory_hooks.py).
-- The installer copies the hook bundle into the local Claude config and wires it through `settings.json`.
+- The shared hook utility lives at [`hooks/memory_hooks.py`](./hooks/memory_hooks.py).
+- Claude uses an installed hook runner in the local Claude config; Codex uses repo-local `.codex/hooks.json` plus [`hooks/codex_hook_runner.py`](./hooks/codex_hook_runner.py).
+
+## Codex support
+
+- `.codex/config.toml` enables hooks, limits subagent fan-out, and registers both `localMemory` and `openaiDeveloperDocs` MCP servers.
+- `.codex/hooks.json` maps Codex lifecycle events to canonical-write guards, proposal validation, ready-proposal promotion, and ingestion events with `source = codex-code-hook`.
+- `.codex/agents/*.toml` defines focused custom agents: coordinator, context researcher, spec analyst, architect, implementer, reviewer, curator, and cross-repo coordinator.
+- `.agents/skills/` exposes the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions from the correct repo-scoped skill path.
+- `scripts/install_codex_assets.py` can also copy those skills into the user-level `~/.agents/skills` directory for global use.
+- The local memory MCP server remains the shared read layer; Markdown remains the source of truth.
 
 ## Local mini stack
 
@@ -92,6 +111,8 @@ This repository is the reference for a Claude Code memory system that works acro
 
 - `python3 scripts/install_claude_assets.py --dry-run`
 - `python3 scripts/install_claude_assets.py --force`
+- `python3 scripts/install_codex_assets.py --dry-run`
+- `python3 scripts/install_codex_assets.py --force`
 - `python3 scripts/package_release.py --version v0.1.0`
 - `python3 scripts/package_release.py --version v0.1.0 --include-knowledge`
 - `python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run`

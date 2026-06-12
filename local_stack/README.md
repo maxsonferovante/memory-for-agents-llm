@@ -1,6 +1,6 @@
 # Local memory stack
 
-This directory contains the minimal fully-local implementation for the memory architecture:
+This directory contains the minimal fully-local implementation for the memory architecture. It is shared by Claude Code, Codex, and future agent clients:
 
 - `api/`: Rust ingestion API ported from the central-memory backend prototype.
 - `postgres` service: local PostgreSQL metadata store.
@@ -9,11 +9,11 @@ This directory contains the minimal fully-local implementation for the memory ar
 
 ## Services
 
-- `POST /v1/events` on the API accepts hook events.
+- `POST /v1/events` on the API accepts hook events from Claude Code, Codex, or any client that sends the same event envelope.
 - Raw payloads land under `/data/raw`.
 - PostgreSQL metadata lives in the `memory` database.
 - Derived index data is exported to `/data/derived/index.json`.
-- The MCP server reads that derived index with the official Rust MCP SDK.
+- The MCP server reads that derived index with the official Rust MCP SDK and can be consumed by Codex through `.codex/config.toml`.
 
 ## Example event
 
@@ -27,7 +27,7 @@ curl -sS http://localhost:8081/v1/events \
     "commit_sha": "abc123",
     "file_path": "knowledge/repos/example.md",
     "scope": "repo",
-    "source": "claude-code-hook",
+    "source": "codex-code-hook",
     "session_id": "019abcdef",
     "created_at": "2026-06-11T12:00:00Z",
     "content": "# Example\\n\\n## Context\\n\\nThis is a test note."
@@ -42,6 +42,19 @@ curl http://localhost:8081/healthz
 curl http://localhost:8081/v1/items
 python3 scripts/smoke_test_local_memory_stack.py
 ```
+
+## Codex MCP consumption
+
+The repo-scoped Codex config registers `localMemory` as a STDIO MCP server. The global installer writes an equivalent user-level `~/.codex/config.toml` entry with absolute paths:
+
+```toml
+[mcp_servers.localMemory]
+command = "sh"
+args = ["-lc", "cd \"$(git rev-parse --show-toplevel)\" && cargo run --quiet --manifest-path local_stack/mcp-server/Cargo.toml"]
+env = { MEMORY_INDEX_PATH = "local_stack/data/derived/index.json" }
+```
+
+After a local stack run, make the derived index available at that host path or override `MEMORY_INDEX_PATH` in user-level Codex config. The MCP server exposes memory search, item reads, and repo context packs to Codex custom agents.
 
 ## Notes
 

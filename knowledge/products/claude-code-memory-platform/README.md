@@ -1,6 +1,6 @@
-# Claude Code Memory Platform
+# Coding Agent Memory Platform
 
-This is the example product scope used to show how shared memory knowledge moves across repositories.
+This product scope started as the Claude Code memory platform and now represents the shared coding-agent memory platform. It shows how reusable memory knowledge moves across repositories while agent-specific adapters live under `.claude/` and `.codex/`.
 
 ## Canonical docs
 
@@ -16,3 +16,4 @@ This is the example product scope used to show how shared memory knowledge moves
 - Use the org-level contracts from `knowledge/org/` as the base.
 - Put shared product behavior here when multiple repos need the same rule.
 - Put repo-local deviations under `knowledge/repos/`.
+- Treat Claude Code and Codex as clients of the same canonical Markdown, ingestion envelope, and MCP read surface.

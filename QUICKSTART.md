@@ -1,17 +1,28 @@
 # Quickstart
 
-This repo is the phase-1 reference for Claude Code memory and agent orchestration. Use it when you want Claude Code to work with a small live context and a durable, source-backed knowledge base.
+This repo is the phase-1 reference for coding-agent memory and orchestration across Claude Code, Codex, and future agent clients. Use it when you want agents to work with a small live context and a durable, source-backed knowledge base.
 
 ## Read this first
 
 1. `AGENTS.md`
 1. `README.md`
-2. `CLAUDE.md`
+2. `CLAUDE.md` when using Claude Code, or `CODEX.md` when using Codex
 3. `knowledge/README.md`
 4. `knowledge/org/README.md`
 5. `knowledge/_proposals/README.md`
 
 ## Optional bootstrap
+
+Codex reads the repo-local `.codex/` project layer and `.agents/skills/` after you trust the project. For global Codex setup across repositories, install the assets into the user-level Codex locations:
+
+```bash
+python3 scripts/install_codex_assets.py --dry-run  # macOS/Linux
+py -3 scripts/install_codex_assets.py --dry-run     # Windows
+python3 scripts/install_codex_assets.py             # macOS/Linux
+py -3 scripts/install_codex_assets.py               # Windows
+```
+
+The Codex installer detects the OS, writes config under `~/.codex` by default, installs user skills under `~/.agents/skills`, and supports `--config-dir`, `--skills-dir`, `--force`, and `--dry-run`.
 
 If you want the local Claude Code config to receive the repo agents, skills, and hooks in one pass, run:
 
@@ -45,9 +56,12 @@ Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATI
 - `knowledge/` stores durable memory.
 - `knowledge/_proposals/` is the staging area before promotion.
 - `CLAUDE.md`, `.claude/rules/`, `.claude/agents/`, `.claude/templates/`, `.claude/skills/`, and `hooks/` define how Claude Code behaves in this repo.
+- `CODEX.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/agents/`, `.agents/skills/`, and `hooks/` define how Codex behaves in this repo.
 - `.github/workflows/` and `.github/pull_request_template.md` automate pull request creation for `feature/*` branches.
 
 ## Standard flow
+
+For Claude Code, use the kebab-case roles below. For Codex, use the matching custom agents under `.codex/agents/`, such as `memory_context_researcher`, `memory_spec_analyst`, and `memory_curator`.
 
 1. `context-researcher` gathers the minimum source-backed context.
 2. `spec-analyst` turns the request into an SDD-ready spec.
@@ -72,7 +86,7 @@ Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATI
 - `knowledge/integrations/`: external contracts.
 - `knowledge/_proposals/`: drafts before promotion.
 
-## What you can ask Claude to do
+## What you can ask an agent to do
 
 - Build a `Context Pack` for a task, repo, product, or domain.
 - Draft or revise a spec before implementation.
