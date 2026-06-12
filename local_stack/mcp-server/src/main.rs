@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     env,
     fs,
+    io::stderr,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -430,6 +431,7 @@ async fn main() -> Result<()> {
         )
         .json()
         .with_current_span(false)
+        .with_writer(stderr)
         .init();
 
     let index_path = env::var("MEMORY_INDEX_PATH").unwrap_or_else(|_| "/data/derived/index.json".into());

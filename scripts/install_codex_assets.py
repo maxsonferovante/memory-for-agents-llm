@@ -53,6 +53,22 @@ CODEX_FEATURES = {
 }
 
 
+def build_local_memory_server(repo_root: Path) -> dict[str, Any]:
+    local_memory = dict(CODEX_MCP_SERVERS["localMemory"])
+    local_memory["args"] = [
+        "run",
+        "--quiet",
+        "--manifest-path",
+        str(repo_root / "local_stack" / "mcp-server" / "Cargo.toml"),
+    ]
+    local_memory["cwd"] = str(repo_root)
+    local_memory["env"] = {
+        "MEMORY_INDEX_PATH": str(repo_root / "local_stack" / "data" / "derived" / "index.json"),
+        "MEMORY_INGEST_API_URL": DEFAULT_INGEST_URL,
+    }
+    return local_memory
+
+
 def discover_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -421,12 +437,7 @@ def merge_table(target: dict[str, Any], values: dict[str, Any]) -> bool:
 
 def update_config_toml(config_path: Path, repo_root: Path, dry_run: bool) -> str:
     config = read_toml(config_path)
-    local_memory = dict(CODEX_MCP_SERVERS["localMemory"])
-    local_memory["cwd"] = str(repo_root)
-    local_memory["env"] = {
-        "MEMORY_INDEX_PATH": str(repo_root / "local_stack" / "data" / "derived" / "index.json"),
-        "MEMORY_INGEST_API_URL": DEFAULT_INGEST_URL,
-    }
+    local_memory = build_local_memory_server(repo_root)
 
     desired = {
         "features": CODEX_FEATURES,

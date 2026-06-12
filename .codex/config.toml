@@ -15,9 +15,10 @@ max_depth = 1
 job_max_runtime_seconds = 1800
 
 [mcp_servers.localMemory]
-command = "sh"
-args = ["-lc", "cd \"$(git rev-parse --show-toplevel)\" && cargo run --quiet --manifest-path local_stack/mcp-server/Cargo.toml"]
-env = { MEMORY_INDEX_PATH = "local_stack/data/derived/index.json" }
+command = "cargo"
+args = ["run", "--quiet", "--manifest-path", "/Users/mferovante/Documents/memory for agents llm/local_stack/mcp-server/Cargo.toml"]
+cwd = "/Users/mferovante/Documents/memory for agents llm"
+env = { MEMORY_INDEX_PATH = "/Users/mferovante/Documents/memory for agents llm/local_stack/data/derived/index.json", MEMORY_INGEST_API_URL = "http://127.0.0.1:8081/v1/events" }
 startup_timeout_sec = 30
 tool_timeout_sec = 60
 enabled = true

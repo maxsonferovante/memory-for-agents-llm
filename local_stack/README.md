@@ -49,9 +49,10 @@ The repo-scoped Codex config registers `localMemory` as a STDIO MCP server. The 
 
 ```toml
 [mcp_servers.localMemory]
-command = "sh"
-args = ["-lc", "cd \"$(git rev-parse --show-toplevel)\" && cargo run --quiet --manifest-path local_stack/mcp-server/Cargo.toml"]
-env = { MEMORY_INDEX_PATH = "local_stack/data/derived/index.json" }
+command = "cargo"
+args = ["run", "--quiet", "--manifest-path", "/absolute/path/to/repo/local_stack/mcp-server/Cargo.toml"]
+cwd = "/absolute/path/to/repo"
+env = { MEMORY_INDEX_PATH = "/absolute/path/to/repo/local_stack/data/derived/index.json", MEMORY_INGEST_API_URL = "http://127.0.0.1:8081/v1/events" }
 ```
 
 After a local stack run, make the derived index available at that host path or override `MEMORY_INDEX_PATH` in user-level Codex config. The MCP server exposes memory search, item reads, and repo context packs to Codex custom agents.
