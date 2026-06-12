@@ -4,6 +4,7 @@ This repository is the reference for a Claude Code memory system that works acro
 
 ## Start here
 
+- [`AGENTS.md`](./AGENTS.md) for contributor guidance and repo-specific workflow notes.
 - [`QUICKSTART.md`](./QUICKSTART.md) for a one-page onboarding path.
 - [`local_stack/README.md`](./local_stack/README.md) for the minimal local Docker Compose implementation.
 
