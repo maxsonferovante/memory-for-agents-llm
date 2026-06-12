@@ -11,6 +11,7 @@ This directory now contains the canonical version of the first memory foundation
 - [context-pack-contract.md](./context-pack-contract.md)
 - [agent-memory-cycle.md](./agent-memory-cycle.md)
 - [memory-curation-flow.md](./memory-curation-flow.md)
+- [memory-curation-autopromotion.md](./memory-curation-autopromotion.md)
 - [cross-repo-sharing-policy.md](./cross-repo-sharing-policy.md)
 - [agent-client-contract.md](./agent-client-contract.md)
 

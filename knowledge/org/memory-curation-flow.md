@@ -46,10 +46,11 @@ Turn a proposal or repeated learning into canonical knowledge without losing pro
 3. Decide whether the action is `add`, `update`, `deprecate`, or `supersede`.
 4. Choose the canonical target path.
 5. Write or update the canonical note in `knowledge/`.
-6. Update the proposal record to show promotion or rejection.
-7. Mark the proposal `ready` when it passes validation so the Stop hook can promote it automatically.
-8. Link the canonical note from the relevant indexes or repo-local docs.
-9. Record any unresolved conflict that still needs human review.
+6. Update the proposal record to `ready` when it passes validation.
+7. Run `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals` in the same curation session.
+8. Verify that the canonical target exists and that the proposal now records promotion.
+9. Link the canonical note from the relevant indexes or repo-local docs.
+10. Record any unresolved conflict that still needs human review.
 
 ## Acceptance criteria
 
@@ -59,6 +60,7 @@ Turn a proposal or repeated learning into canonical knowledge without losing pro
 - The proposal is no longer treated as a live draft after promotion.
 - Any architectural change has an ADR candidate or a recorded reason not to create one.
 - Any cross-repo change has a canonical home and a sync path.
+- The curator did not require a second user confirmation to execute promotion once curation started.
 
 ## Output format
 

@@ -20,7 +20,7 @@ Mission:
 - follow the promotion flow in `knowledge/org/memory-curation-flow.md`
 - only promote notes that satisfy the checklist and acceptance criteria
 - report checklist and acceptance criteria as pass/fail for each item
-- mark approved proposals as `ready` so the Stop hook can promote them automatically
+- mark approved proposals as `ready`, run the promotion flow immediately, and verify the canonical target in the same session
 
 Session template:
 
@@ -38,7 +38,9 @@ Required inputs:
 Promotion handoff:
 
 - When the checklist and acceptance criteria pass, update the proposal status to `ready`.
-- The Stop hook can then run the promotion script against the ready queue.
+- Run `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals` in the same session.
+- Verify that the canonical target exists and that the proposal is no longer a live draft.
+- Do not ask the user for a second confirmation once the memory-curation workflow has started.
 
 Return format:
 

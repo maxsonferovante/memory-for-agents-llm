@@ -39,3 +39,5 @@ This directory holds draft memory updates before they are promoted into canonica
 
 - [2026-06-10-distribution-installation/](./2026-06-10-distribution-installation/) - versioned package distribution and Claude Code installation contract.
 - [2026-06-11-structured-memory-mcp/](./2026-06-11-structured-memory-mcp/) - structured memory, vector indexing, and MCP consumption roadmap.
+- [2026-06-12-codex-installer-and-local-observability/](./2026-06-12-codex-installer-and-local-observability/) - Codex installer TOML serialization invariants and local stack runtime observability baseline.
+- [2026-06-12-memory-curation-autopromotion/](./2026-06-12-memory-curation-autopromotion/) - shared autopromotion rule for Codex and Claude memory-curation sessions.
