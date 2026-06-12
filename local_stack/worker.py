@@ -105,7 +105,7 @@ def _provenance(event: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _index_event(event: dict[str, object]) -> None:
+def _index_event(event: dict[str, object]) -> bool:
     event_id = str(event.get("id") or "unknown")
     logger.info(
         "indexing event id=%s type=%s repo=%s scope=%s",
@@ -116,7 +116,8 @@ def _index_event(event: dict[str, object]) -> None:
     )
     text = _event_text(event).strip()
     if not text:
-        raise ValueError("event has no markdown content")
+        logger.info("skipping event id=%s because it has no markdown content", event_id)
+        return False
 
     frontmatter, body = parse_frontmatter(text)
     title = str(
@@ -211,6 +212,7 @@ def _index_event(event: dict[str, object]) -> None:
     )
     export_index(db, settings.index_path)
     logger.info("exported derived index path=%s", settings.index_path)
+    return True
 
 
 def main() -> int:
@@ -231,10 +233,12 @@ def main() -> int:
             time.sleep(settings.worker_poll_seconds)
             continue
         try:
-            _index_event(job)
+            indexed = _index_event(job)
             mark_job_complete(db, str(job["id"]))
-            export_index(db, settings.index_path)
-            logger.info("processed event id=%s", job["id"])
+            if not indexed:
+                logger.info("processed event id=%s without derived memory output", job["id"])
+            else:
+                logger.info("processed event id=%s", job["id"])
         except Exception as exc:  # noqa: BLE001
             mark_job_failed(db, str(job["id"]), str(exc))
             export_index(db, settings.index_path)

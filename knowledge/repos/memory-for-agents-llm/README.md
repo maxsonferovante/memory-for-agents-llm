@@ -5,6 +5,9 @@ This is the example repo scope used to show how repo-local knowledge consumes pr
 ## Canonical docs
 
 - [repo-local-memory-overrides.md](./repo-local-memory-overrides.md)
+- [codex-installer-toml-serialization.md](./codex-installer-toml-serialization.md)
+- [local-stack-observability.md](./local-stack-observability.md)
+- [local-stack-ingest-idempotency.md](./local-stack-ingest-idempotency.md)
 
 ## Repo rule
 

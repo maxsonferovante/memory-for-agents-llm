@@ -323,6 +323,7 @@ async fn ingest_event(
             created_at, content_hash, raw_payload_path, raw_markdown_path, content, status
         )
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending')
+        ON CONFLICT (id) DO NOTHING
         "#,
     )
     .bind(&event_id)
@@ -342,6 +343,48 @@ async fn ingest_event(
     .execute(&mut *tx)
     .await
     .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    let ingest_rows = sqlx::query(
+        r#"
+        SELECT 1 FROM ingest_events WHERE id = $1
+        "#,
+    )
+    .bind(&event_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+
+    if ingest_rows.len() != 1 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("unexpected ingest row count for event_id={event_id}: {}", ingest_rows.len()),
+        ));
+    }
+
+    if sqlx::query(
+        r#"
+        SELECT status FROM job_queue WHERE id = $1
+        "#,
+    )
+    .bind(&event_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
+    .is_some()
+    {
+        tx.rollback()
+            .await
+            .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+        tracing::info!(event_id = %event_id, "duplicate ingest request ignored");
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(SimpleResponse {
+                id: event_id,
+                status: "duplicate".to_string(),
+                raw_payload_path: raw_payload_path_text,
+                raw_markdown_path: raw_markdown_path_text,
+            }),
+        ));
+    }
 
     sqlx::query(
         r#"

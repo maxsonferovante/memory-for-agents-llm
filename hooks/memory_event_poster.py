@@ -130,14 +130,12 @@ def build_event(
 ) -> dict[str, object] | None:
     content = extract_content(payload)
     path_text = extract_path(payload)
-    if not content and not path_text and not event_type:
+    resolved_event_type = str(
+        event_type or payload.get("event_type") or infer_event_type(path_text, content)
+    )
+    if not content and not path_text:
         return None
 
-    event_id_seed = content or path_text or event_type or utc_now()
-    event_id = str(
-        payload.get("id")
-        or f"evt_{hashlib.sha256(event_id_seed.encode('utf-8')).hexdigest()[:16]}"
-    )
     repo = str(payload.get("repo") or detect_repo_name())
     branch = str(payload.get("branch") or detect_branch() or "")
     commit = str(payload.get("commit_sha") or detect_commit() or "")
@@ -148,12 +146,32 @@ def build_event(
         or os.environ.get("SESSION_ID")
         or ""
     )
+    created_at = str(payload.get("created_at") or utc_now())
+    content_hash = (
+        hashlib.sha256((content or "").encode("utf-8")).hexdigest()
+        if content
+        else hashlib.sha256((path_text or "").encode("utf-8")).hexdigest()
+    )
+    event_id_seed = "|".join(
+        [
+            resolved_event_type,
+            repo,
+            branch,
+            commit,
+            path_text or "",
+            session_id,
+            created_at,
+            content_hash,
+        ]
+    )
+    event_id = str(
+        payload.get("id")
+        or f"evt_{hashlib.sha256(event_id_seed.encode('utf-8')).hexdigest()[:16]}"
+    )
 
     event = {
         "id": event_id,
-        "event_type": str(
-            event_type or payload.get("event_type") or infer_event_type(path_text, content)
-        ),
+        "event_type": resolved_event_type,
         "repo": repo,
         "branch": branch or None,
         "commit_sha": commit or None,
@@ -161,10 +179,8 @@ def build_event(
         "scope": str(payload.get("scope") or infer_scope(path_text)),
         "source": source,
         "session_id": session_id or None,
-        "created_at": str(payload.get("created_at") or utc_now()),
-        "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest()
-        if content
-        else hashlib.sha256((path_text or event_id).encode("utf-8")).hexdigest(),
+        "created_at": created_at,
+        "content_hash": content_hash,
         "content": content,
         "tool_name": payload.get("tool_name"),
     }
@@ -228,4 +244,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
