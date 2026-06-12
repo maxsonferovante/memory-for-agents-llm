@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -114,6 +115,19 @@ def toml_quote(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+_TOML_BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def toml_key(key: str) -> str:
+    if _TOML_BARE_KEY_RE.fullmatch(key):
+        return key
+    return toml_quote(key)
+
+
+def toml_dotted_path(parts: Iterable[str]) -> str:
+    return ".".join(toml_key(part) for part in parts)
+
+
 def toml_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -148,17 +162,17 @@ def emit_toml_table(
             scalars[key] = value
 
     for key in sorted(scalars):
-        lines.append(f"{key} = {toml_value(scalars[key])}")
+        lines.append(f"{toml_key(key)} = {toml_value(scalars[key])}")
 
     for key in sorted(children):
         if lines and lines[-1] != "":
             lines.append("")
-        section = ".".join([*prefix, key])
+        section = toml_dotted_path([*prefix, key])
         lines.append(f"[{section}]")
         emit_toml_table(lines, children[key], [*prefix, key])
 
     for key in sorted(arrays):
-        section = ".".join([*prefix, key])
+        section = toml_dotted_path([*prefix, key])
         for item in arrays[key]:
             if lines and lines[-1] != "":
                 lines.append("")
