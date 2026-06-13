@@ -9,16 +9,16 @@ This directory contains the minimal fully-local implementation for the memory ar
 
 ## Services
 
-- `POST /v1/events` on the API accepts hook events from Claude Code, Codex, or any client that sends the same event envelope.
+- `POST /api/v1/events` on the proxy aceita hook events e os encaminha para a API.
 - Raw payloads land under `/data/raw`.
 - PostgreSQL metadata, chunks, and embeddings live in the `memory` database.
 - The worker stores embeddings in `pgvector` columns on `memory_chunks`.
-- The MCP server reads PostgreSQL directly with the official Rust MCP SDK and is exposed by Docker Compose at `http://127.0.0.1:8082/mcp`.
+- The MCP server reads PostgreSQL directly with the official Rust MCP SDK and is exposed by Docker Compose through the proxy at `http://127.0.0.1:8080/mcp`.
 
 ## Example event
 
 ```bash
-curl -sS http://localhost:8081/v1/events \
+curl -sS http://localhost:8080/api/v1/events \
   -H 'content-type: application/json' \
   -d '{
     "event_type": "session_stop",
@@ -38,9 +38,9 @@ curl -sS http://localhost:8081/v1/events \
 
 ```bash
 docker compose up --build
-curl http://localhost:8081/healthz
-curl http://localhost:8081/v1/items
-curl -i http://localhost:8082/mcp
+curl http://localhost:8080/api/healthz
+curl http://localhost:8080/api/v1/items
+curl -i http://localhost:8080/mcp
 python3 scripts/smoke_test_local_memory_stack.py
 ```
 
@@ -50,10 +50,10 @@ The repo-scoped Codex config registers `localMemory` as a remote MCP server. The
 
 ```toml
 [mcp_servers.localMemory]
-url = "http://127.0.0.1:8082/mcp"
+url = "http://127.0.0.1:8080/mcp"
 ```
 
-After `docker compose up --build`, the MCP server is reachable at `127.0.0.1:8082` and connects internally to the local Postgres service. The MCP server exposes memory search, item reads, and repo context packs to Codex custom agents.
+After `docker compose up --build`, the proxy is reachable at `127.0.0.1:8080`, routing `/api/...` to the ingestion API and `/mcp` to the MCP server. The MCP server still connects internally to the local Postgres service and exposes memory search, item reads, and repo context packs to Codex custom agents.
 
 ## Notes
 

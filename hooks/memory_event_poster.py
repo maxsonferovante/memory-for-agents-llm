@@ -13,7 +13,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 
-DEFAULT_INGEST_URL = "http://127.0.0.1:8081/v1/events"
+DEFAULT_INGEST_URL = "http://127.0.0.1:8080/api/v1/events"
 PATH_KEYS = ("file_path", "filePath", "path", "target_path")
 CONTENT_KEYS = ("content", "text", "body", "value")
 

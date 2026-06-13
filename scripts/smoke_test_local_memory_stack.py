@@ -14,7 +14,7 @@ from urllib import request as urllib_request
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HOOK_POSTER = REPO_ROOT / "hooks" / "memory_event_poster.py"
-API_URL = "http://127.0.0.1:8081"
+STACK_URL = "http://127.0.0.1:8080"
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,7 +42,7 @@ def wait_for_health(timeout: int) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib_request.urlopen(f"{API_URL}/healthz", timeout=3) as response:
+            with urllib_request.urlopen(f"{STACK_URL}/api/healthz", timeout=3) as response:
                 if response.status == 200:
                     return
         except Exception:
@@ -52,19 +52,19 @@ def wait_for_health(timeout: int) -> None:
 
 def post_hook_event(payload: dict[str, object]) -> None:
     env = dict(os.environ)
-    env["MEMORY_INGEST_API_URL"] = f"{API_URL}/v1/events"
+    env["MEMORY_INGEST_API_URL"] = f"{STACK_URL}/api/v1/events"
     run(sys.executable, str(HOOK_POSTER), input_text=json.dumps(payload), env=env)
 
 
 def fetch_items() -> list[dict[str, object]]:
-    with urllib_request.urlopen(f"{API_URL}/v1/items", timeout=5) as response:
+    with urllib_request.urlopen(f"{STACK_URL}/api/v1/items", timeout=5) as response:
         data = json.loads(response.read().decode("utf-8"))
     items = data.get("items", [])
     return items if isinstance(items, list) else []
 
 
 def fetch_chunks() -> list[dict[str, object]]:
-    with urllib_request.urlopen(f"{API_URL}/v1/chunks", timeout=5) as response:
+    with urllib_request.urlopen(f"{STACK_URL}/api/v1/chunks", timeout=5) as response:
         data = json.loads(response.read().decode("utf-8"))
     items = data.get("items", [])
     return items if isinstance(items, list) else []

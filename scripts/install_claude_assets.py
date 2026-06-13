@@ -15,7 +15,7 @@ from typing import Iterable
 PACKAGE_NAME = "memory-for-agents-llm"
 HOOK_MATCHER = "Write|Edit|NotebookEdit"
 CLAUDE_MCP_SERVER_NAME = "localMemory"
-DEFAULT_MCP_URL = "http://127.0.0.1:8082/mcp"
+DEFAULT_MCP_URL = "http://127.0.0.1:8080/mcp"
 
 
 def discover_repo_root() -> Path:
