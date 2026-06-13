@@ -11,11 +11,12 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+from stack_urls import StackUrls, build_stack_urls
+
 
 PACKAGE_NAME = "memory-for-agents-llm"
 HOOK_MATCHER = "Write|Edit|NotebookEdit"
 CLAUDE_MCP_SERVER_NAME = "localMemory"
-DEFAULT_MCP_URL = "http://127.0.0.1:8080/mcp"
 
 
 def discover_repo_root() -> Path:
@@ -260,8 +261,8 @@ def claude_project_state_path(claude_home: Path) -> Path:
     return claude_home.with_name(f"{claude_home.name}.json")
 
 
-def build_claude_local_memory_server(_repo_root: Path) -> dict:
-    return {"url": DEFAULT_MCP_URL}
+def build_claude_local_memory_server(stack_urls: StackUrls) -> dict:
+    return {"url": stack_urls.mcp_url}
 
 
 def merge_project_mcp_server(
@@ -315,14 +316,25 @@ def build_hook_entry(command: str, matcher: str | None = None) -> dict:
     return entry
 
 
-def update_settings(settings_path: Path, runner_path: Path, package_hooks_dir: Path, dry_run: bool) -> str:
+def update_settings(
+    settings_path: Path,
+    runner_path: Path,
+    package_hooks_dir: Path,
+    stack_urls: StackUrls,
+    dry_run: bool,
+) -> str:
     settings = read_json(settings_path)
 
     hook_command_base = quote_command(
         [Path(sys.executable).as_posix(), runner_path.as_posix()]
     )
     event_command = quote_command(
-        [Path(sys.executable).as_posix(), (package_hooks_dir / "memory_event_poster.py").as_posix()]
+        [
+            Path(sys.executable).as_posix(),
+            (package_hooks_dir / "memory_event_poster.py").as_posix(),
+            "--url",
+            stack_urls.ingest_url,
+        ]
     )
 
     changed = False
@@ -370,14 +382,14 @@ def update_settings(settings_path: Path, runner_path: Path, package_hooks_dir: P
 
 
 def update_project_state(
-    state_path: Path, repo_root: Path, dry_run: bool
+    state_path: Path, repo_root: Path, stack_urls: StackUrls, dry_run: bool
 ) -> str:
     state = read_json(state_path)
     changed = merge_project_mcp_server(
         state,
         repo_root,
         CLAUDE_MCP_SERVER_NAME,
-        build_claude_local_memory_server(repo_root),
+        build_claude_local_memory_server(stack_urls),
     )
 
     if not changed:
@@ -412,6 +424,11 @@ def parse_args() -> argparse.Namespace:
         help="Overwrite existing files when they differ.",
     )
     parser.add_argument(
+        "--stack-host",
+        required=True,
+        help="Host or IP for the memory stack proxy; the installer derives the MCP and ingest URLs from it.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would change without writing anything.",
@@ -422,6 +439,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     repo_root = discover_repo_root()
+    stack_urls = build_stack_urls(args.stack_host)
     source_claude_dir = repo_root / ".claude"
     source_agents = source_claude_dir / "agents"
     source_skills = source_claude_dir / "skills"
@@ -441,6 +459,7 @@ def main() -> int:
             claude_home / "settings.json",
             package_hooks_dir / "claude_hook_runner.py",
             package_hooks_dir,
+            stack_urls,
             args.dry_run,
         )
     )
@@ -448,12 +467,14 @@ def main() -> int:
         update_project_state(
             claude_project_state_path(claude_home),
             repo_root,
+            stack_urls,
             args.dry_run,
         )
     )
 
     print(f"Claude config directory: {claude_home}")
     print(f"Package root: {package_root}")
+    print(f"Stack base URL: {stack_urls.base_url}")
     for action in actions:
         print(action)
 

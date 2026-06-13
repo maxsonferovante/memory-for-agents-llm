@@ -37,6 +37,7 @@ The same utility also exposes `validate-proposal` when you want to check a draft
 
 - `hooks/memory_event_poster.py` posts hook payloads to `MEMORY_INGEST_API_URL`.
 - The default target is `http://127.0.0.1:8080/api/v1/events`.
+- The Codex and Claude installers now pass the same endpoint explicitly with `--url` after deriving it from `--stack-host`.
 - Use `--source claude-code-hook`, `--source codex-code-hook`, or another explicit source to preserve provenance.
 - Use `--event-type` for lifecycle hooks whose payload does not include a path or event type.
 - Use `--ignore-errors` for global hooks so Codex is not blocked when the local memory API is offline.

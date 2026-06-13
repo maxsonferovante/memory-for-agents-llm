@@ -16,24 +16,24 @@ This repo is the phase-1 reference for coding-agent memory and orchestration acr
 Codex reads the repo-local `.codex/` project layer and `.agents/skills/` after you trust the project. For global Codex setup across repositories, install the assets into the user-level Codex locations:
 
 ```bash
-python3 scripts/install_codex_assets.py --dry-run  # macOS/Linux
-py -3 scripts/install_codex_assets.py --dry-run     # Windows
-python3 scripts/install_codex_assets.py             # macOS/Linux
-py -3 scripts/install_codex_assets.py               # Windows
+python3 scripts/install_codex_assets.py --dry-run --stack-host 127.0.0.1  # macOS/Linux
+py -3 scripts/install_codex_assets.py --dry-run --stack-host 127.0.0.1    # Windows
+python3 scripts/install_codex_assets.py --stack-host 127.0.0.1             # macOS/Linux
+py -3 scripts/install_codex_assets.py --stack-host 127.0.0.1               # Windows
 ```
 
-The Codex installer detects the OS, writes config under `~/.codex` by default, installs user skills under `~/.agents/skills`, and supports `--config-dir`, `--skills-dir`, `--force`, and `--dry-run`.
+The Codex installer detects the OS, writes config under `~/.codex` by default, installs user skills under `~/.agents/skills`, and supports `--config-dir`, `--skills-dir`, `--force`, `--stack-host`, and `--dry-run`.
 
 If you want the local Claude Code config to receive the repo agents, skills, and hooks in one pass, run:
 
 ```bash
-python3 scripts/install_claude_assets.py --dry-run  # macOS/Linux
-py -3 scripts/install_claude_assets.py --dry-run     # Windows
-python3 scripts/install_claude_assets.py             # macOS/Linux
-py -3 scripts/install_claude_assets.py               # Windows
+python3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1  # macOS/Linux
+py -3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1    # Windows
+python3 scripts/install_claude_assets.py --stack-host 127.0.0.1             # macOS/Linux
+py -3 scripts/install_claude_assets.py --stack-host 127.0.0.1               # Windows
 ```
 
-The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files.
+The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files. Pass `--stack-host` every time so the hook and MCP URLs point at the right proxy.
 
 ## Local stack flow
 
@@ -44,7 +44,7 @@ docker compose up --build
 python3 scripts/smoke_test_local_memory_stack.py
 ```
 
-The smoke test posts a hook event, waits for indexing, and verifies the generated memory item plus a chunk persisted with a `pgvector` embedding.
+The smoke test posts a hook event, waits for indexing, and verifies the generated memory item plus a chunk persisted with a `pgvector` embedding. The base compose file points at Docker Hub images, while `docker-compose.override.yml` restores local builds automatically for `docker compose up --build`.
 
 ## Pull request automation
 

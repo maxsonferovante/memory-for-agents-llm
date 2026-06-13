@@ -1,0 +1,14 @@
+services:
+  api:
+    build:
+      context: local_stack/api
+      dockerfile: Dockerfile
+
+  worker:
+    build:
+      context: .
+      dockerfile: local_stack/worker/Dockerfile
+
+  mcp-server:
+    build:
+      context: local_stack/mcp-server

@@ -15,20 +15,22 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from stack_urls import StackUrls, build_stack_urls
+
 
 PACKAGE_NAME = "memory-for-agents-llm"
-DEFAULT_MCP_URL = "http://127.0.0.1:8080/mcp"
+
+
+LOCAL_MEMORY_MCP_SERVER = {
+    "startup_timeout_sec": 30,
+    "tool_timeout_sec": 60,
+    "enabled": True,
+    "required": False,
+    "default_tools_approval_mode": "auto",
+}
 
 
 CODEX_MCP_SERVERS = {
-    "localMemory": {
-        "url": DEFAULT_MCP_URL,
-        "startup_timeout_sec": 30,
-        "tool_timeout_sec": 60,
-        "enabled": True,
-        "required": False,
-        "default_tools_approval_mode": "auto",
-    },
     "openaiDeveloperDocs": {
         "url": "https://developers.openai.com/mcp",
         "startup_timeout_sec": 15,
@@ -52,8 +54,11 @@ CODEX_FEATURES = {
 }
 
 
-def build_local_memory_server(_repo_root: Path) -> dict[str, Any]:
-    return dict(CODEX_MCP_SERVERS["localMemory"])
+def build_local_memory_server(stack_urls: StackUrls) -> dict[str, Any]:
+    return {
+        "url": stack_urls.mcp_url,
+        **LOCAL_MEMORY_MCP_SERVER,
+    }
 
 
 def discover_repo_root() -> Path:
@@ -299,15 +304,17 @@ def merge_hook(settings: dict[str, Any], event: str, entry: dict[str, Any]) -> b
     return True
 
 
-def update_hooks_json(hooks_path: Path, package_hooks_dir: Path, dry_run: bool) -> str:
+def update_hooks_json(
+    hooks_path: Path, package_hooks_dir: Path, stack_urls: StackUrls, dry_run: bool
+) -> str:
     settings = read_json(hooks_path)
     runner = package_hooks_dir / "codex_hook_runner.py"
     poster = package_hooks_dir / "memory_event_poster.py"
 
     runner_command = python_command(runner)
     runner_command_windows = python_command_windows(runner)
-    poster_command = python_command(poster)
-    poster_command_windows = python_command_windows(poster)
+    poster_command = python_command(poster, "--url", stack_urls.ingest_url)
+    poster_command_windows = python_command_windows(poster, "--url", stack_urls.ingest_url)
 
     changed = False
     changed |= merge_hook(
@@ -422,9 +429,9 @@ def merge_table(target: dict[str, Any], values: dict[str, Any]) -> bool:
     return changed
 
 
-def update_config_toml(config_path: Path, repo_root: Path, dry_run: bool) -> str:
+def update_config_toml(config_path: Path, stack_urls: StackUrls, dry_run: bool) -> str:
     config = read_toml(config_path)
-    local_memory = build_local_memory_server(repo_root)
+    local_memory = build_local_memory_server(stack_urls)
 
     desired = {
         "features": CODEX_FEATURES,
@@ -479,6 +486,11 @@ def parse_args() -> argparse.Namespace:
         help="Overwrite existing installed agent, skill, and hook files when they differ.",
     )
     parser.add_argument(
+        "--stack-host",
+        required=True,
+        help="Host or IP for the memory stack proxy; the installer derives the MCP and ingest URLs from it.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would change without writing anything.",
@@ -489,6 +501,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     repo_root = discover_repo_root()
+    stack_urls = build_stack_urls(args.stack_host)
     source_codex_dir = repo_root / ".codex"
     source_agents = source_codex_dir / "agents"
     source_skills = repo_root / ".agents" / "skills"
@@ -503,8 +516,10 @@ def main() -> int:
     actions.extend(copy_tree(source_agents, codex_home / "agents", args.force, args.dry_run))
     actions.extend(copy_tree(source_skills, skills_dir, args.force, args.dry_run))
     actions.extend(copy_tree(source_hooks, package_hooks_dir, args.force, args.dry_run))
-    actions.append(update_config_toml(codex_home / "config.toml", repo_root, args.dry_run))
-    actions.append(update_hooks_json(codex_home / "hooks.json", package_hooks_dir, args.dry_run))
+    actions.append(update_config_toml(codex_home / "config.toml", stack_urls, args.dry_run))
+    actions.append(
+        update_hooks_json(codex_home / "hooks.json", package_hooks_dir, stack_urls, args.dry_run)
+    )
 
     print(f"Detected OS: {platform.system() or os.name}")
     print(f"Codex config directory: {codex_home}")
@@ -512,6 +527,7 @@ def main() -> int:
     print(f"Codex user skills directory: {skills_dir}")
     print(f"Package root: {package_root}")
     print(f"Repository root: {repo_root}")
+    print(f"Stack base URL: {stack_urls.base_url}")
     for action in actions:
         print(action)
 

@@ -23,9 +23,11 @@ Bring the stack up with `docker compose up --build` so the proxy exposes both su
 - `/api/...` -> ingestion API
 - `/mcp` -> MCP server
 
+For a remote VPS or another host, pass `--stack-host <ip-or-domain>` to the installers. They derive both the MCP URL and the hook-ingest URL from that single host value.
+
 ## Global install
 
-Run `python3 scripts/install_codex_assets.py --dry-run` to preview installation into user-level Codex locations. By default the installer writes:
+Run `python3 scripts/install_codex_assets.py --dry-run --stack-host 127.0.0.1` to preview installation into user-level Codex locations. The same flag is required for remote installs too. By default the installer writes:
 
 - `~/.codex/config.toml` for global features, subagent limits, and MCP servers.
 - `~/.codex/hooks.json` for global lifecycle hooks.

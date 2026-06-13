@@ -17,9 +17,7 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: local_stack/api
-      dockerfile: Dockerfile
+    image: maxsonferovante/memory-for-agents-llm-api:${MEMORY_IMAGE_TAG:-latest}
     environment:
       MEMORY_DATABASE_URL: postgresql://memory:memory@postgres:5432/memory
       MEMORY_DATA_DIR: /data
@@ -33,9 +31,7 @@ services:
         condition: service_healthy
 
   worker:
-    build:
-      context: .
-      dockerfile: local_stack/worker/Dockerfile
+    image: maxsonferovante/memory-for-agents-llm-worker:${MEMORY_IMAGE_TAG:-latest}
     environment:
       MEMORY_DATABASE_URL: postgresql://memory:memory@postgres:5432/memory
       MEMORY_DATA_DIR: /data
@@ -49,8 +45,7 @@ services:
         condition: service_healthy
 
   mcp-server:
-    build:
-      context: local_stack/mcp-server
+    image: maxsonferovante/memory-for-agents-llm-mcp-server:${MEMORY_IMAGE_TAG:-latest}
     environment:
       MEMORY_DATABASE_URL: postgresql://memory:memory@postgres:5432/memory
       MEMORY_MCP_BIND: 0.0.0.0:8082

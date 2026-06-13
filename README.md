@@ -38,14 +38,14 @@ This repository is the reference for a coding-agent memory system that works acr
 ## Local bootstrap
 
 - Codex can use the repo-local `.codex/` and `.agents/skills/` layers directly after the project is trusted.
-- `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations.
-- `scripts/install_claude_assets.py` installs the repo agents, skills, hook wiring, and the project-scoped `localMemory` MCP registration into the local Claude Code config.
+- `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations. It requires `--stack-host` so the generated URLs point at the right proxy.
+- `scripts/install_claude_assets.py` installs the repo agents, skills, hook wiring, and the project-scoped `localMemory` MCP registration into the local Claude Code config. It also requires `--stack-host`.
 - The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
-- It runs without prompts and supports `--dry-run`, `--force`, and `--config-dir`.
-- Recommended first check: run it with your local Python 3 launcher, for example `python3 scripts/install_claude_assets.py --dry-run` on macOS/Linux or `py -3 scripts/install_claude_assets.py --dry-run` on Windows.
-- Recommended install: `python3 scripts/install_claude_assets.py` or the equivalent launcher on your platform.
+- The installers run without prompts and support `--dry-run`, `--force`, `--config-dir`, and `--stack-host` when you need to target a remote stack.
+- Recommended first check: run the Claude installer with your local Python 3 launcher, for example `python3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1` on macOS/Linux or `py -3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1` on Windows.
+- Recommended install: `python3 scripts/install_claude_assets.py --stack-host 127.0.0.1` or the equivalent launcher on your platform.
 - Claude hook settings are written to `~/.claude/settings.json`; Claude project MCP registration is written to `~/.claude.json` under the current repo path.
-- `docker compose up --build` starts the local mini stack with API, worker, and MCP server.
+- `docker compose up --build` starts the local mini stack with API, worker, and MCP server. The base compose file points at Docker Hub images and `docker-compose.override.yml` restores local builds.
 - `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item plus stored chunk embedding.
 
 ## Runtime layout
@@ -99,7 +99,7 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 - `.codex/agents/*.toml` defines focused custom agents: coordinator, context researcher, spec analyst, architect, implementer, reviewer, curator, and cross-repo coordinator.
 - `.agents/skills/` exposes the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions from the correct repo-scoped skill path.
 - `scripts/install_codex_assets.py` can also copy those skills into the user-level `~/.agents/skills` directory for global use.
-- The local memory MCP server remains the shared read layer and is consumed through the Docker-exposed proxy endpoint `http://127.0.0.1:8080/mcp`; Markdown remains the source of truth.
+- The local memory MCP server remains the shared read layer and is consumed through the Docker-exposed proxy endpoint `http://127.0.0.1:8080/mcp`; remote installs derive the same path from `--stack-host`. Markdown remains the source of truth.
 
 ## Local mini stack
 
@@ -110,13 +110,14 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 
 ### Useful commands
 
-- `python3 scripts/install_claude_assets.py --dry-run`
-- `python3 scripts/install_claude_assets.py --force`
-- `python3 scripts/install_codex_assets.py --dry-run`
-- `python3 scripts/install_codex_assets.py --force`
+- `python3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1`
+- `python3 scripts/install_claude_assets.py --force --stack-host 127.0.0.1`
+- `python3 scripts/install_codex_assets.py --dry-run --stack-host 127.0.0.1`
+- `python3 scripts/install_codex_assets.py --force --stack-host 127.0.0.1`
+- `python3 scripts/publish_local_stack_images.py --version v0.1.0 --dry-run`
 - `python3 scripts/package_release.py --version v0.1.0`
 - `python3 scripts/package_release.py --version v0.1.0 --include-knowledge`
-- `python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run`
+- `python3 scripts/install_public_release.py --source dist/releases/memory-for-agents-llm-v0.1.0.tar.gz --dry-run --stack-host 127.0.0.1`
 - `python3 hooks/memory_hooks.py guard-write --path knowledge/org/memory-governance.md`
 - `python3 hooks/memory_hooks.py validate-proposal knowledge/_proposals/2026-06-09-memory-foundation/01-memory-governance.md`
 - `python3 hooks/memory_hooks.py promote-ready --queue knowledge/_proposals`
@@ -126,6 +127,11 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 - Branches that start with `feature/` can be opened as pull requests by the workflow in `.github/workflows/auto-open-pr-on-feature-branch.yml`.
 - That automation requires a repository secret named `PR_AUTOMATION_TOKEN` with `pull_requests: write` permission.
 - If the secret is not configured, the workflow emits a notice and skips PR creation instead of failing.
+
+## Docker Hub publish
+
+- The workflow in `.github/workflows/publish-local-stack-images.yml` publishes the API, worker, and MCP images on `v*` tags and through manual dispatch.
+- It requires a repository secret named `DOCKERHUB_TOKEN` with push access to the `maxsonferovante` namespace.
 
 ## Knowledge model
 

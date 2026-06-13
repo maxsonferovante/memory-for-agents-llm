@@ -51,6 +51,7 @@ def run_installer(package_root: Path, args: argparse.Namespace) -> int:
         command.append("--force")
     if args.config_dir:
         command.extend(["--config-dir", args.config_dir])
+    command.extend(["--stack-host", args.stack_host])
 
     completed = subprocess.run(command, cwd=package_root)
     return completed.returncode
@@ -71,6 +72,11 @@ def parse_args() -> argparse.Namespace:
         "--force",
         action="store_true",
         help="Allow overwriting differing local files.",
+    )
+    parser.add_argument(
+        "--stack-host",
+        required=True,
+        help="Host or IP for the memory stack proxy; the installer derives the MCP and ingest URLs from it.",
     )
     parser.add_argument(
         "--dry-run",

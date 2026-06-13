@@ -7,6 +7,8 @@ This directory contains the minimal fully-local implementation for the memory ar
 - `worker/`: asynchronous indexer that derives structured memory, chunks, and embeddings.
 - `mcp-server/`: Rust MCP server that reads PostgreSQL directly and exposes search/resources over HTTP.
 
+The published Docker Compose contract pulls the runtime images from Docker Hub. The repo keeps a `docker-compose.override.yml` file so `docker compose up --build` still rebuilds the same services from source during local development.
+
 ## Services
 
 - `POST /api/v1/events` on the proxy aceita hook events e os encaminha para a API.
@@ -43,6 +45,17 @@ curl http://localhost:8080/api/v1/items
 curl -i http://localhost:8080/mcp
 python3 scripts/smoke_test_local_memory_stack.py
 ```
+
+## VPS Deploy
+
+To run the published images on the x86_64 VPS, use the base compose file only so Docker Compose does not auto-load `docker-compose.override.yml`, and pin the image tag if needed:
+
+```bash
+MEMORY_IMAGE_TAG=v0.1.0 docker compose -f docker-compose.yml pull
+MEMORY_IMAGE_TAG=v0.1.0 docker compose -f docker-compose.yml up -d
+```
+
+Use `latest` if you want the moving release alias instead of a pinned version tag.
 
 ## Codex MCP consumption
 
