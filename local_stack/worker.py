@@ -22,7 +22,6 @@ from local_stack.markdown import (
 from local_stack.storage import (
     claim_next_job,
     connect,
-    export_index,
     initialize,
     mark_job_complete,
     mark_job_failed,
@@ -210,8 +209,6 @@ def _index_event(event: dict[str, object]) -> bool:
         len(chunks_data),
         title,
     )
-    export_index(db, settings.index_path)
-    logger.info("exported derived index path=%s", settings.index_path)
     return True
 
 
@@ -220,9 +217,8 @@ def main() -> int:
     _bootstrap_database()
     db = connect(settings.db_path)
     logger.info(
-        "local memory worker started db_path=%s index_path=%s poll_seconds=%s max_chunk_chars=%s",
+        "local memory worker started db_path=%s poll_seconds=%s max_chunk_chars=%s",
         settings.db_path,
-        settings.index_path,
         settings.worker_poll_seconds,
         settings.max_chunk_chars,
     )
@@ -241,7 +237,6 @@ def main() -> int:
                 logger.info("processed event id=%s", job["id"])
         except Exception as exc:  # noqa: BLE001
             mark_job_failed(db, str(job["id"]), str(exc))
-            export_index(db, settings.index_path)
             logger.exception("failed event id=%s", job["id"])
 
 

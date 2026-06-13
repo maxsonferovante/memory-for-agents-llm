@@ -89,7 +89,7 @@ struct MemoryChunkRecord {
     heading_path: String,
     chunk_index: i64,
     chunk_text: String,
-    embedding_json: String,
+    embedding: String,
     token_count: i64,
     source_file: String,
     provenance_json: String,
@@ -118,6 +118,7 @@ struct ItemsResponse<T> {
 
 async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     let statements = [
+        r#"CREATE EXTENSION IF NOT EXISTS vector"#,
         r#"
         CREATE TABLE IF NOT EXISTS ingest_events (
             id TEXT PRIMARY KEY,
@@ -180,16 +181,50 @@ async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
             heading_path TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             chunk_text TEXT NOT NULL,
-            embedding_json TEXT NOT NULL,
+            embedding vector(48),
             token_count INTEGER NOT NULL,
             source_file TEXT NOT NULL,
             provenance_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
         "#,
+        r#"ALTER TABLE memory_chunks ADD COLUMN IF NOT EXISTS embedding vector(48)"#,
+        r#"
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'memory_chunks' AND column_name = 'embedding_json'
+            ) THEN
+                UPDATE memory_chunks
+                SET embedding = CAST(embedding_json AS vector(48))
+                WHERE embedding IS NULL AND embedding_json IS NOT NULL;
+            END IF;
+        END
+        $$;
+        "#,
+        r#"ALTER TABLE memory_chunks ALTER COLUMN embedding SET NOT NULL"#,
+        r#"
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'memory_chunks' AND column_name = 'embedding_json'
+            ) THEN
+                ALTER TABLE memory_chunks DROP COLUMN embedding_json;
+            END IF;
+        END
+        $$;
+        "#,
         r#"CREATE INDEX IF NOT EXISTS idx_job_queue_status_next_run ON job_queue(status, next_run_at)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_items_repo_scope ON memory_items(repo, scope)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_chunks_item ON memory_chunks(memory_item_id)"#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding_cosine
+        ON memory_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)
+        "#,
     ];
 
     for statement in statements {
@@ -446,7 +481,24 @@ async fn list_items(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResp
 
 async fn list_chunks(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResponse<MemoryChunkRecord>>, (StatusCode, String)> {
     let items = sqlx::query_as::<_, MemoryChunkRecord>(
-        r#"SELECT * FROM memory_chunks ORDER BY created_at DESC"#,
+        r#"
+        SELECT
+            id,
+            memory_item_id,
+            repo,
+            scope,
+            kind,
+            heading_path,
+            chunk_index::bigint AS chunk_index,
+            chunk_text,
+            embedding::text AS embedding,
+            token_count::bigint AS token_count,
+            source_file,
+            provenance_json,
+            created_at
+        FROM memory_chunks
+        ORDER BY created_at DESC
+        "#,
     )
     .fetch_all(&state.pool)
     .await
@@ -501,10 +553,7 @@ async fn main() {
     fs::create_dir_all(&raw_dir)
         .await
         .unwrap_or_else(|err| panic!("failed to create raw dir: {err}"));
-    fs::create_dir_all(data_dir.join("derived"))
-        .await
-        .unwrap_or_else(|err| panic!("failed to create derived dir: {err}"));
-    tracing::info!(derived_dir = %data_dir.join("derived").display(), "filesystem directories ensured");
+    tracing::info!("filesystem directories ensured");
 
     let state = Arc::new(AppState {
         pool,

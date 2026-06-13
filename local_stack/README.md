@@ -5,15 +5,15 @@ This directory contains the minimal fully-local implementation for the memory ar
 - `api/`: Rust ingestion API ported from the central-memory backend prototype.
 - `postgres` service: local PostgreSQL metadata store.
 - `worker/`: asynchronous indexer that derives structured memory, chunks, and embeddings.
-- `mcp-server/`: Rust MCP server that reads the derived index and exposes search/resources.
+- `mcp-server/`: Rust MCP server that reads PostgreSQL directly and exposes search/resources.
 
 ## Services
 
 - `POST /v1/events` on the API accepts hook events from Claude Code, Codex, or any client that sends the same event envelope.
 - Raw payloads land under `/data/raw`.
-- PostgreSQL metadata lives in the `memory` database.
-- Derived index data is exported to `/data/derived/index.json`.
-- The MCP server reads that derived index with the official Rust MCP SDK and can be consumed by Codex through `.codex/config.toml`.
+- PostgreSQL metadata, chunks, and embeddings live in the `memory` database.
+- The worker stores embeddings in `pgvector` columns on `memory_chunks`.
+- The MCP server reads PostgreSQL directly with the official Rust MCP SDK and can be consumed by Codex through `.codex/config.toml`.
 
 ## Example event
 
@@ -52,10 +52,10 @@ The repo-scoped Codex config registers `localMemory` as a STDIO MCP server. The 
 command = "cargo"
 args = ["run", "--quiet", "--manifest-path", "/absolute/path/to/repo/local_stack/mcp-server/Cargo.toml"]
 cwd = "/absolute/path/to/repo"
-env = { MEMORY_INDEX_PATH = "/absolute/path/to/repo/local_stack/data/derived/index.json", MEMORY_INGEST_API_URL = "http://127.0.0.1:8081/v1/events" }
+env = { MEMORY_DATABASE_URL = "postgresql://memory:memory@127.0.0.1:5432/memory", MEMORY_INGEST_API_URL = "http://127.0.0.1:8081/v1/events" }
 ```
 
-After a local stack run, make the derived index available at that host path or override `MEMORY_INDEX_PATH` in user-level Codex config. The MCP server exposes memory search, item reads, and repo context packs to Codex custom agents.
+After `docker compose up --build`, the MCP server connects to the local Postgres instance exposed on `127.0.0.1:5432`. The MCP server exposes memory search, item reads, and repo context packs to Codex custom agents.
 
 ## Notes
 

@@ -44,7 +44,7 @@ docker compose up --build
 python3 scripts/smoke_test_local_memory_stack.py
 ```
 
-The smoke test posts a hook event, waits for indexing, and verifies the generated memory item.
+The smoke test posts a hook event, waits for indexing, and verifies the generated memory item plus a chunk persisted with a `pgvector` embedding.
 
 ## Pull request automation
 

@@ -12,7 +12,12 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
+VECTOR_DIMENSIONS = 48
+
+
 SCHEMA = """
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE IF NOT EXISTS ingest_events (
     id TEXT PRIMARY KEY,
     event_type TEXT NOT NULL,
@@ -71,16 +76,48 @@ CREATE TABLE IF NOT EXISTS memory_chunks (
     heading_path TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
     chunk_text TEXT NOT NULL,
-    embedding_json TEXT NOT NULL,
+    embedding vector(48),
     token_count INTEGER NOT NULL,
     source_file TEXT NOT NULL,
     provenance_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
 
+ALTER TABLE memory_chunks ADD COLUMN IF NOT EXISTS embedding vector(48);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'memory_chunks' AND column_name = 'embedding_json'
+    ) THEN
+        UPDATE memory_chunks
+        SET embedding = CAST(embedding_json AS vector(48))
+        WHERE embedding IS NULL AND embedding_json IS NOT NULL;
+    END IF;
+END
+$$;
+
+ALTER TABLE memory_chunks ALTER COLUMN embedding SET NOT NULL;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'memory_chunks' AND column_name = 'embedding_json'
+    ) THEN
+        ALTER TABLE memory_chunks DROP COLUMN embedding_json;
+    END IF;
+END
+$$;
+
 CREATE INDEX IF NOT EXISTS idx_job_queue_status_next_run ON job_queue(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_memory_items_repo_scope ON memory_items(repo, scope);
 CREATE INDEX IF NOT EXISTS idx_memory_chunks_item ON memory_chunks(memory_item_id);
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding_cosine
+ON memory_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 """
 
 
@@ -151,9 +188,8 @@ def fetchall(conn, sql: str, params: tuple[object, ...] = ()) -> list[dict[str, 
         return [dict(row) for row in cursor.fetchall()]
 
 
-def write_json(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def vector_literal(values: list[float]) -> str:
+    return "[" + ",".join(f"{value:.17g}" for value in values) + "]"
 
 
 def save_event(
@@ -307,8 +343,8 @@ def replace_chunks(conn, memory_item_id: str, chunks: list[dict[str, object]]) -
                 """
                 INSERT INTO memory_chunks (
                     id, memory_item_id, repo, scope, kind, heading_path, chunk_index,
-                    chunk_text, embedding_json, token_count, source_file, provenance_json, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    chunk_text, embedding, token_count, source_file, provenance_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CAST(%s AS vector(48)), %s, %s, %s, %s)
                 """,
                 (
                     chunk["id"],
@@ -319,57 +355,10 @@ def replace_chunks(conn, memory_item_id: str, chunks: list[dict[str, object]]) -
                     chunk["heading_path"],
                     chunk["chunk_index"],
                     chunk["chunk_text"],
-                    json.dumps(chunk["embedding"], ensure_ascii=False),
+                    vector_literal(list(chunk["embedding"])),
                     chunk["token_count"],
                     chunk["source_file"],
                     json.dumps(chunk["provenance"], ensure_ascii=False, sort_keys=True),
                     chunk["created_at"],
                 ),
             )
-
-
-def export_index(conn, index_path: Path) -> None:
-    items = fetchall(conn, "SELECT * FROM memory_items ORDER BY updated_at DESC")
-    chunks = fetchall(conn, "SELECT * FROM memory_chunks ORDER BY created_at DESC")
-    payload = {
-        "generated_at": utc_now(),
-        "items": [
-            {
-                "id": row["id"],
-                "event_id": row["event_id"],
-                "repo": row["repo"],
-                "scope": row["scope"],
-                "kind": row["kind"],
-                "title": row["title"],
-                "summary": row["summary"],
-                "source_file": row["source_file"],
-                "commit_sha": row["commit_sha"],
-                "content_hash": row["content_hash"],
-                "status": row["status"],
-                "supersedes_id": row["supersedes_id"],
-                "provenance": json.loads(row["provenance_json"]),
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-            for row in items
-        ],
-        "chunks": [
-            {
-                "id": row["id"],
-                "memory_item_id": row["memory_item_id"],
-                "repo": row["repo"],
-                "scope": row["scope"],
-                "kind": row["kind"],
-                "heading_path": row["heading_path"],
-                "chunk_index": row["chunk_index"],
-                "chunk_text": row["chunk_text"],
-                "embedding": json.loads(row["embedding_json"]),
-                "token_count": row["token_count"],
-                "source_file": row["source_file"],
-                "provenance": json.loads(row["provenance_json"]),
-                "created_at": row["created_at"],
-            }
-            for row in chunks
-        ],
-    }
-    write_json(index_path, payload)

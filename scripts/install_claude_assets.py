@@ -269,9 +269,7 @@ def build_claude_local_memory_server(repo_root: Path) -> dict:
             str(repo_root / "local_stack" / "mcp-server" / "Cargo.toml"),
         ],
         "env": {
-            "MEMORY_INDEX_PATH": str(
-                repo_root / "local_stack" / "data" / "derived" / "index.json"
-            )
+            "MEMORY_DATABASE_URL": "postgresql://memory:memory@127.0.0.1:5432/memory"
         },
     }
 

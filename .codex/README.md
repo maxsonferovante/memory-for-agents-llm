@@ -11,15 +11,15 @@ This directory makes the memory system first-class for Codex, not only Claude Co
 
 ## Trust and MCP
 
-Codex loads project-local hooks and MCP only after this `.codex/` layer is trusted. The local memory MCP server is optional (`required = false`) so Codex still works before the local stack has produced an index.
+Codex loads project-local hooks and MCP only after this `.codex/` layer is trusted. The local memory MCP server is optional (`required = false`) so Codex still works before the local stack database is available.
 
-The default MCP config starts the Rust MCP server from this repo and reads:
+The default MCP config starts the Rust MCP server from this repo and connects to:
 
 ```txt
-local_stack/data/derived/index.json
+postgresql://memory:memory@127.0.0.1:5432/memory
 ```
 
-For Docker Compose runs, export or copy the generated `/data/derived/index.json` from the `local-memory-data` volume into that path, or override `MEMORY_INDEX_PATH` in your user-level `~/.codex/config.toml`.
+For Docker Compose runs, keep the local Postgres service exposed on `127.0.0.1:5432`, or override `MEMORY_DATABASE_URL` in your user-level `~/.codex/config.toml`.
 
 ## Global install
 

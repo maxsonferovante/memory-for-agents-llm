@@ -63,6 +63,13 @@ def fetch_items() -> list[dict[str, object]]:
     return items if isinstance(items, list) else []
 
 
+def fetch_chunks() -> list[dict[str, object]]:
+    with urllib_request.urlopen(f"{API_URL}/v1/chunks", timeout=5) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    items = data.get("items", [])
+    return items if isinstance(items, list) else []
+
+
 def main() -> int:
     args = parse_args()
     stack_started = False
@@ -95,6 +102,7 @@ This note exists only to validate the local ingestion and indexing flow.
         deadline = time.time() + args.timeout
         while time.time() < deadline:
             items = fetch_items()
+            chunks = fetch_chunks()
             match = next(
                 (
                     item
@@ -105,13 +113,26 @@ This note exists only to validate the local ingestion and indexing flow.
                 ),
                 None,
             )
-            if match:
+            chunk_match = next(
+                (
+                    chunk
+                    for chunk in chunks
+                    if isinstance(chunk, dict)
+                    and chunk.get("source_file") == "knowledge/repos/smoke-test.md"
+                    and isinstance(chunk.get("embedding"), str)
+                    and str(chunk.get("embedding", "")).startswith("[")
+                ),
+                None,
+            )
+            if match and chunk_match:
                 print(
                     json.dumps(
                         {
                             "status": "ok",
                             "indexed_item": match,
+                            "indexed_chunk": chunk_match,
                             "item_count": len(items),
+                            "chunk_count": len(chunks),
                         },
                         indent=2,
                         ensure_ascii=False,
@@ -120,7 +141,7 @@ This note exists only to validate the local ingestion and indexing flow.
                 return 0
             time.sleep(1)
 
-        raise SystemExit("smoke test did not index the expected item in time")
+        raise SystemExit("smoke test did not index the expected item and chunk in time")
     finally:
         if stack_started and not args.keep_up:
             subprocess.run(["docker", "compose", "down", "-v"], cwd=REPO_ROOT, check=False)
@@ -128,4 +149,3 @@ This note exists only to validate the local ingestion and indexing flow.
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

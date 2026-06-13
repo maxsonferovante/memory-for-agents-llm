@@ -18,6 +18,7 @@ from typing import Any, Iterable
 
 PACKAGE_NAME = "memory-for-agents-llm"
 DEFAULT_INGEST_URL = "http://127.0.0.1:8081/v1/events"
+DEFAULT_DATABASE_URL = "postgresql://memory:memory@127.0.0.1:5432/memory"
 
 
 CODEX_MCP_SERVERS = {
@@ -63,7 +64,7 @@ def build_local_memory_server(repo_root: Path) -> dict[str, Any]:
     ]
     local_memory["cwd"] = str(repo_root)
     local_memory["env"] = {
-        "MEMORY_INDEX_PATH": str(repo_root / "local_stack" / "data" / "derived" / "index.json"),
+        "MEMORY_DATABASE_URL": DEFAULT_DATABASE_URL,
         "MEMORY_INGEST_API_URL": DEFAULT_INGEST_URL,
     }
     return local_memory

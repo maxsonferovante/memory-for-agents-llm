@@ -1,13 +1,12 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env,
-    fs,
     io::stderr,
-    path::{Path, PathBuf},
+    num::ParseFloatError,
     sync::Arc,
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
@@ -17,36 +16,42 @@ use rmcp::{
     ServiceExt,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tokio::io::stdin;
+use sqlx::{FromRow, PgPool};
+use tokio::{io::stdin, task};
 use tracing_subscriber::EnvFilter;
+
+const EMBEDDING_DIMENSIONS: usize = 48;
+const DEFAULT_LIMIT: usize = 10;
 
 #[derive(Clone)]
 struct MemoryServer {
-    index_path: Arc<PathBuf>,
+    pool: Arc<PgPool>,
     tool_router: ToolRouter<Self>,
 }
 
 impl MemoryServer {
-    fn new(index_path: PathBuf) -> Self {
+    fn new(pool: PgPool) -> Self {
         Self {
-            index_path: Arc::new(index_path),
+            pool: Arc::new(pool),
             tool_router: Self::tool_router(),
         }
     }
-}
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct MemoryIndex {
-    generated_at: String,
-    items: Vec<MemoryItem>,
-    chunks: Vec<MemoryChunk>,
+    fn run_db<F, T>(&self, future: F) -> Result<T, McpError>
+    where
+        F: std::future::Future<Output = Result<T, sqlx::Error>>,
+    {
+        task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
+            .map_err(database_error)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct MemoryItem {
     id: String,
-    event_id: String,
+    event_id: Option<String>,
     repo: String,
     scope: String,
     kind: String,
@@ -57,7 +62,7 @@ struct MemoryItem {
     content_hash: String,
     status: String,
     supersedes_id: Option<String>,
-    provenance: serde_json::Value,
+    provenance: Value,
     created_at: String,
     updated_at: String,
 }
@@ -75,7 +80,7 @@ struct MemoryChunk {
     embedding: Vec<f64>,
     token_count: i64,
     source_file: String,
-    provenance: serde_json::Value,
+    provenance: Value,
     created_at: String,
 }
 
@@ -96,6 +101,62 @@ struct ItemArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct ResourceArgs {
     repo: String,
+}
+
+#[derive(Debug, FromRow)]
+struct MemoryItemRow {
+    id: String,
+    event_id: Option<String>,
+    repo: String,
+    scope: String,
+    kind: String,
+    title: String,
+    summary: String,
+    source_file: String,
+    commit_sha: Option<String>,
+    content_hash: String,
+    status: String,
+    supersedes_id: Option<String>,
+    provenance: Value,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct MemoryChunkRow {
+    id: String,
+    memory_item_id: String,
+    repo: String,
+    scope: String,
+    kind: String,
+    heading_path: String,
+    chunk_index: i64,
+    chunk_text: String,
+    embedding_text: String,
+    token_count: i64,
+    source_file: String,
+    provenance: Value,
+    created_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct SearchCandidateRow {
+    id: String,
+    event_id: Option<String>,
+    repo: String,
+    scope: String,
+    kind: String,
+    title: String,
+    summary: String,
+    source_file: String,
+    commit_sha: Option<String>,
+    content_hash: String,
+    status: String,
+    supersedes_id: Option<String>,
+    provenance: Value,
+    created_at: String,
+    updated_at: String,
+    distance: f64,
 }
 
 fn normalize_words(text: &str) -> Vec<String> {
@@ -121,7 +182,8 @@ fn hash_embedding(text: &str, dimensions: usize) -> Vec<f64> {
         let mut hasher = Sha256::new();
         hasher.update(word.as_bytes());
         let digest = hasher.finalize();
-        let index = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) as usize % dimensions;
+        let index =
+            u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) as usize % dimensions;
         let sign = if digest[4] & 1 == 1 { -1.0 } else { 1.0 };
         let weight = 1.0 + (digest[5] as f64 / 255.0);
         vector[index] += sign * weight;
@@ -135,47 +197,7 @@ fn hash_embedding(text: &str, dimensions: usize) -> Vec<f64> {
     vector
 }
 
-fn cosine_similarity(left: &[f64], right: &[f64]) -> f64 {
-    left.iter()
-        .zip(right.iter())
-        .map(|(a, b)| a * b)
-        .sum::<f64>()
-}
-
-fn load_index(path: &Path) -> Result<MemoryIndex> {
-    tracing::debug!(index_path = %path.display(), "loading memory index");
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read index file {}", path.display()))?;
-    let index: MemoryIndex = serde_json::from_str(&raw)
-        .with_context(|| format!("failed to parse index file {}", path.display()))?;
-    tracing::debug!(
-        index_path = %path.display(),
-        items = index.items.len(),
-        chunks = index.chunks.len(),
-        generated_at = %index.generated_at,
-        "memory index loaded"
-    );
-    Ok(index)
-}
-
-fn filter_items<'a>(
-    index: &'a MemoryIndex,
-    repo: Option<&str>,
-    scope: Option<&str>,
-    kind: Option<&str>,
-) -> Vec<&'a MemoryItem> {
-    index
-        .items
-        .iter()
-        .filter(move |item| {
-        repo.map(|value| item.repo == value).unwrap_or(true)
-            && scope.map(|value| item.scope == value).unwrap_or(true)
-            && kind.map(|value| item.kind == value).unwrap_or(true)
-        })
-        .collect()
-}
-
-fn score_item(index: &MemoryIndex, item: &MemoryItem, query: &str) -> f64 {
+fn lexical_score(item: &MemoryItem, query: &str) -> f64 {
     let query_words: HashSet<String> = normalize_words(query).into_iter().collect();
     let lexical_source = format!("{} {} {}", item.title, item.summary, item.source_file);
     let lexical_words = normalize_words(&lexical_source);
@@ -183,21 +205,166 @@ fn score_item(index: &MemoryIndex, item: &MemoryItem, query: &str) -> f64 {
         .iter()
         .filter(|word| query_words.contains(*word))
         .count() as f64;
-    let query_embedding = hash_embedding(query, 48);
-    let mut vector_score = 0.0_f64;
-    for chunk in index.chunks.iter().filter(|chunk| chunk.memory_item_id == item.id) {
-        vector_score = vector_score.max(cosine_similarity(&query_embedding, &chunk.embedding));
-    }
-    let lexical_score = overlap / (query_words.len().max(1) as f64);
-    (lexical_score * 0.6) + (vector_score.max(0.0) * 0.4)
+    overlap / (query_words.len().max(1) as f64)
 }
 
-fn item_chunks<'a>(index: &'a MemoryIndex, item_id: &str) -> Vec<&'a MemoryChunk> {
-    index
-        .chunks
+fn vector_literal(values: &[f64]) -> String {
+    let body = values
         .iter()
-        .filter(|chunk| chunk.memory_item_id == item_id)
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("[{body}]")
+}
+
+fn parse_vector(text: &str) -> std::result::Result<Vec<f64>, ParseFloatError> {
+    let trimmed = text.trim().trim_start_matches('[').trim_end_matches(']');
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    trimmed
+        .split(',')
+        .map(|entry| entry.trim().parse::<f64>())
         .collect()
+}
+
+fn database_error(error: sqlx::Error) -> McpError {
+    McpError::internal_error(
+        "database_error",
+        Some(serde_json::json!({
+            "message": error.to_string(),
+        })),
+    )
+}
+
+fn memory_item_from_row(row: MemoryItemRow) -> MemoryItem {
+    MemoryItem {
+        id: row.id,
+        event_id: row.event_id,
+        repo: row.repo,
+        scope: row.scope,
+        kind: row.kind,
+        title: row.title,
+        summary: row.summary,
+        source_file: row.source_file,
+        commit_sha: row.commit_sha,
+        content_hash: row.content_hash,
+        status: row.status,
+        supersedes_id: row.supersedes_id,
+        provenance: row.provenance,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+fn memory_chunk_from_row(row: MemoryChunkRow) -> std::result::Result<MemoryChunk, ParseFloatError> {
+    Ok(MemoryChunk {
+        id: row.id,
+        memory_item_id: row.memory_item_id,
+        repo: row.repo,
+        scope: row.scope,
+        kind: row.kind,
+        heading_path: row.heading_path,
+        chunk_index: row.chunk_index,
+        chunk_text: row.chunk_text,
+        embedding: parse_vector(&row.embedding_text)?,
+        token_count: row.token_count,
+        source_file: row.source_file,
+        provenance: row.provenance,
+        created_at: row.created_at,
+    })
+}
+
+async fn fetch_item(pool: &PgPool, item_id: &str) -> Result<Option<MemoryItem>, sqlx::Error> {
+    let row = sqlx::query_as::<_, MemoryItemRow>(
+        r#"
+        SELECT
+            id,
+            event_id,
+            repo,
+            scope,
+            kind,
+            title,
+            summary,
+            source_file,
+            commit_sha,
+            content_hash,
+            status,
+            supersedes_id,
+            provenance_json::jsonb AS provenance,
+            created_at,
+            updated_at
+        FROM memory_items
+        WHERE id = $1
+        "#,
+    )
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(memory_item_from_row))
+}
+
+async fn fetch_item_chunks(pool: &PgPool, item_id: &str) -> Result<Vec<MemoryChunk>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, MemoryChunkRow>(
+        r#"
+        SELECT
+            id,
+            memory_item_id,
+            repo,
+            scope,
+            kind,
+            heading_path,
+            chunk_index::bigint AS chunk_index,
+            chunk_text,
+            embedding::text AS embedding_text,
+            token_count::bigint AS token_count,
+            source_file,
+            provenance_json::jsonb AS provenance,
+            created_at
+        FROM memory_chunks
+        WHERE memory_item_id = $1
+        ORDER BY chunk_index ASC
+        "#,
+    )
+    .bind(item_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            memory_chunk_from_row(row)
+                .map_err(|error| sqlx::Error::Decode(Box::new(error)))
+        })
+        .collect()
+}
+
+async fn fetch_items_for_repo(pool: &PgPool, repo: &str) -> Result<Vec<MemoryItem>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, MemoryItemRow>(
+        r#"
+        SELECT
+            id,
+            event_id,
+            repo,
+            scope,
+            kind,
+            title,
+            summary,
+            source_file,
+            commit_sha,
+            content_hash,
+            status,
+            supersedes_id,
+            provenance_json::jsonb AS provenance,
+            created_at,
+            updated_at
+        FROM memory_items
+        WHERE repo = $1
+        ORDER BY updated_at DESC
+        "#,
+    )
+    .bind(repo)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(memory_item_from_row).collect())
 }
 
 #[tool_router]
@@ -209,37 +376,105 @@ impl MemoryServer {
             repo = ?args.repo,
             scope = ?args.scope,
             kind = ?args.kind,
-            limit = args.limit.unwrap_or(10),
+            limit = args.limit.unwrap_or(DEFAULT_LIMIT as u32),
             "mcp search_memory called"
         );
-        let index = load_index(&self.index_path)
-            .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
-                "message": error.to_string(),
-            }))))?;
-        let limit = args.limit.unwrap_or(10).max(1) as usize;
-        let mut results: Vec<_> = filter_items(
-            &index,
-            args.repo.as_deref(),
-            args.scope.as_deref(),
-            args.kind.as_deref(),
-        )
-        .into_iter()
-        .map(|item| {
-            let score = score_item(&index, item, &args.query);
-            serde_json::json!({
-                "id": item.id,
-                "repo": item.repo,
-                "scope": item.scope,
-                "kind": item.kind,
-                "title": item.title,
-                "summary": item.summary,
-                "source_file": item.source_file,
-                "status": item.status,
-                "score": score,
-                "resource": format!("memory://items/{}", item.id),
+
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT as u32).max(1) as usize;
+        let query_embedding = vector_literal(&hash_embedding(&args.query, EMBEDDING_DIMENSIONS));
+        let candidate_limit = ((limit * 8).max(20)) as i64;
+        let pool = Arc::clone(&self.pool);
+        let repo = args.repo.clone();
+        let scope = args.scope.clone();
+        let kind = args.kind.clone();
+
+        let rows = self.run_db(async move {
+            sqlx::query_as::<_, SearchCandidateRow>(
+                r#"
+                SELECT
+                    i.id,
+                    i.event_id,
+                    i.repo,
+                    i.scope,
+                    i.kind,
+                    i.title,
+                    i.summary,
+                    i.source_file,
+                    i.commit_sha,
+                    i.content_hash,
+                    i.status,
+                    i.supersedes_id,
+                    i.provenance_json::jsonb AS provenance,
+                    i.created_at,
+                    i.updated_at,
+                    c.embedding <=> CAST($1 AS vector) AS distance
+                FROM memory_chunks c
+                JOIN memory_items i ON i.id = c.memory_item_id
+                WHERE ($2::text IS NULL OR i.repo = $2)
+                  AND ($3::text IS NULL OR i.scope = $3)
+                  AND ($4::text IS NULL OR i.kind = $4)
+                ORDER BY c.embedding <=> CAST($1 AS vector), i.updated_at DESC
+                LIMIT $5
+                "#,
+            )
+            .bind(query_embedding)
+            .bind(repo)
+            .bind(scope)
+            .bind(kind)
+            .bind(candidate_limit)
+            .fetch_all(&*pool)
+            .await
+        })?;
+
+        let mut aggregated: HashMap<String, (MemoryItem, f64)> = HashMap::new();
+        for row in rows {
+            let vector_score = (1.0_f64 - row.distance).max(0.0);
+            let item = memory_item_from_row(MemoryItemRow {
+                id: row.id,
+                event_id: row.event_id,
+                repo: row.repo,
+                scope: row.scope,
+                kind: row.kind,
+                title: row.title,
+                summary: row.summary,
+                source_file: row.source_file,
+                commit_sha: row.commit_sha,
+                content_hash: row.content_hash,
+                status: row.status,
+                supersedes_id: row.supersedes_id,
+                provenance: row.provenance,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+            aggregated
+                .entry(item.id.clone())
+                .and_modify(|(_, best_score)| {
+                    if vector_score > *best_score {
+                        *best_score = vector_score;
+                    }
+                })
+                .or_insert((item, vector_score));
+        }
+
+        let mut results: Vec<_> = aggregated
+            .into_values()
+            .map(|(item, vector_score)| {
+                let score = (lexical_score(&item, &args.query) * 0.6) + (vector_score * 0.4);
+                serde_json::json!({
+                    "id": item.id,
+                    "repo": item.repo,
+                    "scope": item.scope,
+                    "kind": item.kind,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "source_file": item.source_file,
+                    "status": item.status,
+                    "score": score,
+                    "resource": format!("memory://items/{}", item.id),
+                })
             })
-        })
-        .collect();
+            .collect();
+
         results.sort_by(|left, right| {
             right["score"]
                 .as_f64()
@@ -247,6 +482,7 @@ impl MemoryServer {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         results.truncate(limit);
+
         tracing::info!(count = results.len(), "mcp search_memory completed");
         Ok(serde_json::json!({
             "query": args.query,
@@ -259,18 +495,16 @@ impl MemoryServer {
     #[tool(description = "Get one structured memory item and its chunks by id")]
     fn get_memory_item(&self, Parameters(args): Parameters<ItemArgs>) -> Result<String, McpError> {
         tracing::info!(item_id = %args.id, "mcp get_memory_item called");
-        let index = load_index(&self.index_path)
-            .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
-                "message": error.to_string(),
-            }))))?;
-        let item = index
-            .items
-            .iter()
-            .find(|candidate| candidate.id == args.id)
-            .ok_or_else(|| McpError::resource_not_found("memory_item_not_found", Some(serde_json::json!({
-                "id": args.id,
-            }))))?;
-        let chunks = item_chunks(&index, &item.id);
+        let pool = Arc::clone(&self.pool);
+        let item = self
+            .run_db(fetch_item(&pool, &args.id))?
+            .ok_or_else(|| {
+                McpError::resource_not_found(
+                    "memory_item_not_found",
+                    Some(serde_json::json!({ "id": args.id })),
+                )
+            })?;
+        let chunks = self.run_db(fetch_item_chunks(&pool, &item.id))?;
         tracing::info!(item_id = %item.id, chunk_count = chunks.len(), "mcp get_memory_item completed");
         Ok(serde_json::json!({
             "item": item,
@@ -285,19 +519,16 @@ impl MemoryServer {
         Parameters(args): Parameters<ResourceArgs>,
     ) -> Result<String, McpError> {
         tracing::info!(repo = %args.repo, "mcp get_repo_context_pack called");
-        let index = load_index(&self.index_path)
-            .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
-                "message": error.to_string(),
-            }))))?;
-        let items: Vec<_> = index
-            .items
-            .iter()
-            .filter(|item| item.repo == args.repo)
-            .collect();
+        let pool = Arc::clone(&self.pool);
+        let items = self.run_db(fetch_items_for_repo(&pool, &args.repo))?;
+        let generated_at = items
+            .first()
+            .map(|item| item.updated_at.clone())
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
         tracing::info!(repo = %args.repo, item_count = items.len(), "mcp get_repo_context_pack completed");
         Ok(serde_json::json!({
             "repo": args.repo,
-            "generated_at": index.generated_at,
+            "generated_at": generated_at,
             "items": items,
         })
         .to_string())
@@ -323,17 +554,39 @@ impl ServerHandler for MemoryServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         tracing::debug!("mcp list_resources called");
-        let index = load_index(&self.index_path)
-            .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
-                "message": error.to_string(),
-            }))))?;
+        let items = sqlx::query_as::<_, MemoryItemRow>(
+            r#"
+            SELECT
+                id,
+                event_id,
+                repo,
+                scope,
+                kind,
+                title,
+                summary,
+                source_file,
+                commit_sha,
+                content_hash,
+                status,
+                supersedes_id,
+                provenance_json::jsonb AS provenance,
+                created_at,
+                updated_at
+            FROM memory_items
+            ORDER BY updated_at DESC
+            LIMIT 100
+            "#,
+        )
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(database_error)?;
+
         let mut resources = vec![
             RawResource::new("memory://org/invariants", "org invariants").no_annotation(),
         ];
-        for item in index.items.iter().take(100) {
+        for item in items.into_iter().map(memory_item_from_row) {
             resources.push(
-                RawResource::new(format!("memory://items/{}", item.id), item.title.clone())
-                    .no_annotation(),
+                RawResource::new(format!("memory://items/{}", item.id), item.title).no_annotation(),
             );
         }
         tracing::info!(resource_count = resources.len(), "mcp list_resources completed");
@@ -350,22 +603,46 @@ impl ServerHandler for MemoryServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         tracing::info!(uri = %request.uri, "mcp read_resource called");
-        let index = load_index(&self.index_path)
-            .map_err(|error| McpError::internal_error("index_load_error", Some(serde_json::json!({
-                "message": error.to_string(),
-            }))))?;
         match request.uri.as_str() {
             "memory://org/invariants" => {
-                let items: Vec<_> = index
-                    .items
-                    .iter()
-                    .filter(|item| item.scope == "org" || item.kind == "lesson")
-                    .collect();
+                let items = sqlx::query_as::<_, MemoryItemRow>(
+                    r#"
+                    SELECT
+                        id,
+                        event_id,
+                        repo,
+                        scope,
+                        kind,
+                        title,
+                        summary,
+                        source_file,
+                        commit_sha,
+                        content_hash,
+                        status,
+                        supersedes_id,
+                        provenance_json::jsonb AS provenance,
+                        created_at,
+                        updated_at
+                    FROM memory_items
+                    WHERE scope = 'org' OR kind = 'lesson'
+                    ORDER BY updated_at DESC
+                    "#,
+                )
+                .fetch_all(&*self.pool)
+                .await
+                .map_err(database_error)?
+                .into_iter()
+                .map(memory_item_from_row)
+                .collect::<Vec<_>>();
+                let generated_at = items
+                    .first()
+                    .map(|item| item.updated_at.clone())
+                    .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
                 Ok(ReadResourceResult {
                     contents: vec![ResourceContents::text(
                         serde_json::json!({
                             "uri": request.uri,
-                            "generated_at": index.generated_at,
+                            "generated_at": generated_at,
                             "items": items,
                         })
                         .to_string(),
@@ -375,19 +652,18 @@ impl ServerHandler for MemoryServer {
             }
             uri if uri.starts_with("memory://items/") => {
                 let item_id = uri.trim_start_matches("memory://items/");
-                let item = index
-                    .items
-                    .iter()
-                    .find(|candidate| candidate.id == item_id)
+                let item = fetch_item(&self.pool, item_id)
+                    .await
+                    .map_err(database_error)?
                     .ok_or_else(|| {
                         McpError::resource_not_found(
                             "memory_item_not_found",
-                            Some(serde_json::json!({
-                                "uri": request.uri,
-                            })),
+                            Some(serde_json::json!({ "uri": request.uri })),
                         )
                     })?;
-                let chunks = item_chunks(&index, &item.id);
+                let chunks = fetch_item_chunks(&self.pool, &item.id)
+                    .await
+                    .map_err(database_error)?;
                 tracing::info!(uri = %request.uri, chunk_count = chunks.len(), "mcp read_resource item resolved");
                 Ok(ReadResourceResult {
                     contents: vec![ResourceContents::text(
@@ -427,17 +703,29 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,rmcp=warn")),
+                .unwrap_or_else(|_| EnvFilter::new("info,rmcp=warn,sqlx=warn")),
         )
         .json()
         .with_current_span(false)
         .with_writer(stderr)
         .init();
 
-    let index_path = env::var("MEMORY_INDEX_PATH").unwrap_or_else(|_| "/data/derived/index.json".into());
-    tracing::info!(index_path = %index_path, "starting memory mcp server");
-    let server = MemoryServer::new(PathBuf::from(index_path));
+    let database_url = env::var("MEMORY_DATABASE_URL")
+        .unwrap_or_else(|_| panic!("MEMORY_DATABASE_URL is required"));
+    let sanitized_database_url = if let Some((prefix, _)) = database_url.rsplit_once('@') {
+        format!("{prefix}@<redacted>")
+    } else {
+        "<redacted>".to_string()
+    };
+    tracing::info!(database_url = %sanitized_database_url, "starting memory mcp server");
 
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+    tracing::info!("memory mcp database connection established");
+
+    let server = MemoryServer::new(pool);
     let service = server.serve((stdin(), tokio::io::stdout())).await?;
     tracing::info!("memory mcp server ready");
     service.waiting().await?;

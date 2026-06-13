@@ -46,7 +46,7 @@ This repository is the reference for a coding-agent memory system that works acr
 - Recommended install: `python3 scripts/install_claude_assets.py` or the equivalent launcher on your platform.
 - Claude hook settings are written to `~/.claude/settings.json`; Claude project MCP registration is written to `~/.claude.json` under the current repo path.
 - `docker compose up --build` starts the local mini stack with API, worker, and MCP server.
-- `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item.
+- `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item plus stored chunk embedding.
 
 ## Runtime layout
 
