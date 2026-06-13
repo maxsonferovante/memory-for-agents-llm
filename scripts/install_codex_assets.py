@@ -17,14 +17,12 @@ from typing import Any, Iterable
 
 
 PACKAGE_NAME = "memory-for-agents-llm"
-DEFAULT_INGEST_URL = "http://127.0.0.1:8081/v1/events"
-DEFAULT_DATABASE_URL = "postgresql://memory:memory@127.0.0.1:5432/memory"
+DEFAULT_MCP_URL = "http://127.0.0.1:8082/mcp"
 
 
 CODEX_MCP_SERVERS = {
     "localMemory": {
-        "command": "cargo",
-        "args": ["run", "--quiet", "--manifest-path", "local_stack/mcp-server/Cargo.toml"],
+        "url": DEFAULT_MCP_URL,
         "startup_timeout_sec": 30,
         "tool_timeout_sec": 60,
         "enabled": True,
@@ -54,20 +52,8 @@ CODEX_FEATURES = {
 }
 
 
-def build_local_memory_server(repo_root: Path) -> dict[str, Any]:
-    local_memory = dict(CODEX_MCP_SERVERS["localMemory"])
-    local_memory["args"] = [
-        "run",
-        "--quiet",
-        "--manifest-path",
-        str(repo_root / "local_stack" / "mcp-server" / "Cargo.toml"),
-    ]
-    local_memory["cwd"] = str(repo_root)
-    local_memory["env"] = {
-        "MEMORY_DATABASE_URL": DEFAULT_DATABASE_URL,
-        "MEMORY_INGEST_API_URL": DEFAULT_INGEST_URL,
-    }
-    return local_memory
+def build_local_memory_server(_repo_root: Path) -> dict[str, Any]:
+    return dict(CODEX_MCP_SERVERS["localMemory"])
 
 
 def discover_repo_root() -> Path:

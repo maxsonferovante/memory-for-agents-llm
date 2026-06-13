@@ -2,28 +2,33 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     io::stderr,
+    net::SocketAddr,
     num::ParseFloatError,
     sync::Arc,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use axum::{Router, routing::get};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars::JsonSchema,
     service::RequestContext,
+    transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    },
     tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
-    ServiceExt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
-use tokio::{io::stdin, task};
+use tokio::task;
 use tracing_subscriber::EnvFilter;
 
 const EMBEDDING_DIMENSIONS: usize = 48;
 const DEFAULT_LIMIT: usize = 10;
+const DEFAULT_MCP_BIND: &str = "0.0.0.0:8082";
 
 #[derive(Clone)]
 struct MemoryServer {
@@ -712,12 +717,13 @@ async fn main() -> Result<()> {
 
     let database_url = env::var("MEMORY_DATABASE_URL")
         .unwrap_or_else(|_| panic!("MEMORY_DATABASE_URL is required"));
+    let bind_addr = env::var("MEMORY_MCP_BIND").unwrap_or_else(|_| DEFAULT_MCP_BIND.to_string());
     let sanitized_database_url = if let Some((prefix, _)) = database_url.rsplit_once('@') {
         format!("{prefix}@<redacted>")
     } else {
         "<redacted>".to_string()
     };
-    tracing::info!(database_url = %sanitized_database_url, "starting memory mcp server");
+    tracing::info!(database_url = %sanitized_database_url, %bind_addr, "starting memory mcp server");
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
@@ -725,9 +731,24 @@ async fn main() -> Result<()> {
         .await?;
     tracing::info!("memory mcp database connection established");
 
-    let server = MemoryServer::new(pool);
-    let service = server.serve((stdin(), tokio::io::stdout())).await?;
-    tracing::info!("memory mcp server ready");
-    service.waiting().await?;
+    let session_manager = Arc::new(LocalSessionManager::default());
+    let service = StreamableHttpService::new(
+        {
+            let pool = pool.clone();
+            move || Ok(MemoryServer::new(pool.clone()))
+        },
+        session_manager,
+        StreamableHttpServerConfig::default(),
+    );
+    let app = Router::new()
+        .route("/healthz", get(|| async { "ok" }))
+        .nest_service("/mcp", service);
+    let addr: SocketAddr = bind_addr
+        .parse()
+        .with_context(|| format!("invalid MEMORY_MCP_BIND: {bind_addr}"))?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    tracing::info!(%addr, "memory mcp server ready");
+    axum::serve(listener, app).await?;
     Ok(())
 }

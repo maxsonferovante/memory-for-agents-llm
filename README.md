@@ -99,7 +99,7 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 - `.codex/agents/*.toml` defines focused custom agents: coordinator, context researcher, spec analyst, architect, implementer, reviewer, curator, and cross-repo coordinator.
 - `.agents/skills/` exposes the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions from the correct repo-scoped skill path.
 - `scripts/install_codex_assets.py` can also copy those skills into the user-level `~/.agents/skills` directory for global use.
-- The local memory MCP server remains the shared read layer; Markdown remains the source of truth.
+- The local memory MCP server remains the shared read layer and is consumed through the Docker-exposed endpoint `http://127.0.0.1:8082/mcp`; Markdown remains the source of truth.
 
 ## Local mini stack
 

@@ -14,6 +14,14 @@ max_threads = 4
 max_depth = 1
 job_max_runtime_seconds = 1800
 
+[mcp_servers.localMemory]
+url = "http://127.0.0.1:8082/mcp"
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+enabled = true
+required = false
+default_tools_approval_mode = "auto"
+
 [mcp_servers.openaiDeveloperDocs]
 url = "https://developers.openai.com/mcp"
 startup_timeout_sec = 15

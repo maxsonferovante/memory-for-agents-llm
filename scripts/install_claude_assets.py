@@ -15,6 +15,7 @@ from typing import Iterable
 PACKAGE_NAME = "memory-for-agents-llm"
 HOOK_MATCHER = "Write|Edit|NotebookEdit"
 CLAUDE_MCP_SERVER_NAME = "localMemory"
+DEFAULT_MCP_URL = "http://127.0.0.1:8082/mcp"
 
 
 def discover_repo_root() -> Path:
@@ -259,19 +260,8 @@ def claude_project_state_path(claude_home: Path) -> Path:
     return claude_home.with_name(f"{claude_home.name}.json")
 
 
-def build_claude_local_memory_server(repo_root: Path) -> dict:
-    return {
-        "command": "cargo",
-        "args": [
-            "run",
-            "--quiet",
-            "--manifest-path",
-            str(repo_root / "local_stack" / "mcp-server" / "Cargo.toml"),
-        ],
-        "env": {
-            "MEMORY_DATABASE_URL": "postgresql://memory:memory@127.0.0.1:5432/memory"
-        },
-    }
+def build_claude_local_memory_server(_repo_root: Path) -> dict:
+    return {"url": DEFAULT_MCP_URL}
 
 
 def merge_project_mcp_server(

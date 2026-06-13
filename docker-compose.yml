@@ -55,6 +55,9 @@ services:
       context: local_stack/mcp-server
     environment:
       MEMORY_DATABASE_URL: postgresql://memory:memory@postgres:5432/memory
+      MEMORY_MCP_BIND: 0.0.0.0:8082
+    ports:
+      - "8082:8082"
     stdin_open: true
     tty: true
     restart: unless-stopped
