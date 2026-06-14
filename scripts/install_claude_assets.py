@@ -15,7 +15,7 @@ from stack_urls import StackUrls, build_stack_urls
 
 
 PACKAGE_NAME = "memory-for-agents-llm"
-HOOK_MATCHER = "Write|Edit|NotebookEdit"
+HOOK_MATCHER = ".*"
 CLAUDE_MCP_SERVER_NAME = "localMemory"
 
 
@@ -172,8 +172,7 @@ def run_memory_hooks(argv: list[str]) -> int:
 
     if subcommand == "guard-write":
         if not path_text:
-            print("memory hook runner: could not determine path for guard-write", file=sys.stderr)
-            return 1
+            return 0
         command = [
             sys.executable,
             str(hooks_script),
