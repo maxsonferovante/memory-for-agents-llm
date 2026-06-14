@@ -29,6 +29,61 @@ use tracing_subscriber::EnvFilter;
 const EMBEDDING_DIMENSIONS: usize = 48;
 const DEFAULT_LIMIT: usize = 10;
 const DEFAULT_MCP_BIND: &str = "0.0.0.0:8082";
+const LOCAL_MCP_PUBLIC_BASE_URL: &str = "http://127.0.0.1:8080";
+const OAUTH_AUTHORIZATION_ENDPOINT: &str = "http://127.0.0.1:8080/oauth/authorize";
+const OAUTH_TOKEN_ENDPOINT: &str = "http://127.0.0.1:8080/oauth/token";
+
+#[derive(Serialize)]
+struct OAuthAuthorizationServerMetadata {
+    issuer: &'static str,
+    authorization_endpoint: &'static str,
+    token_endpoint: &'static str,
+    response_types_supported: [&'static str; 1],
+    grant_types_supported: [&'static str; 2],
+    code_challenge_methods_supported: [&'static str; 2],
+    token_endpoint_auth_methods_supported: [&'static str; 3],
+    scopes_supported: [&'static str; 3],
+    introspection_endpoint: &'static str,
+    revocation_endpoint: &'static str,
+    registration_endpoint: &'static str,
+}
+
+#[derive(Serialize)]
+struct OAuthResourceMetadata {
+    resource: &'static str,
+    authorization_servers: [&'static str; 1],
+    scopes_supported: [&'static str; 3],
+}
+
+#[derive(Serialize)]
+struct OAuthErrorResponse {
+    error: &'static str,
+    error_description: &'static str,
+}
+
+fn oauth_authorization_server_metadata() -> OAuthAuthorizationServerMetadata {
+    OAuthAuthorizationServerMetadata {
+        issuer: LOCAL_MCP_PUBLIC_BASE_URL,
+        authorization_endpoint: OAUTH_AUTHORIZATION_ENDPOINT,
+        token_endpoint: OAUTH_TOKEN_ENDPOINT,
+        response_types_supported: ["code"],
+        grant_types_supported: ["authorization_code", "refresh_token"],
+        code_challenge_methods_supported: ["S256", "plain"],
+        token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+        scopes_supported: ["openid", "profile", "offline_access"],
+        introspection_endpoint: "http://127.0.0.1:8080/oauth/introspect",
+        revocation_endpoint: "http://127.0.0.1:8080/oauth/revoke",
+        registration_endpoint: "http://127.0.0.1:8080/oauth/register",
+    }
+}
+
+fn oauth_resource_metadata() -> OAuthResourceMetadata {
+    OAuthResourceMetadata {
+        resource: "http://127.0.0.1:8080/mcp",
+        authorization_servers: [LOCAL_MCP_PUBLIC_BASE_URL],
+        scopes_supported: ["openid", "profile", "offline_access"],
+    }
+}
 
 #[derive(Clone)]
 struct MemoryServer {
@@ -370,6 +425,36 @@ async fn fetch_items_for_repo(pool: &PgPool, repo: &str) -> Result<Vec<MemoryIte
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(memory_item_from_row).collect())
+}
+
+async fn oauth_authorization_server() -> axum::Json<OAuthAuthorizationServerMetadata> {
+    axum::Json(oauth_authorization_server_metadata())
+}
+
+async fn oauth_resource_server() -> axum::Json<OAuthResourceMetadata> {
+    axum::Json(oauth_resource_metadata())
+}
+
+async fn oauth_authorize() -> (axum::http::StatusCode, axum::Json<OAuthErrorResponse>) {
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(OAuthErrorResponse {
+            error: "authorization_not_implemented",
+            error_description:
+                "This local stack exposes OAuth discovery metadata but does not implement an interactive authorization screen.",
+        }),
+    )
+}
+
+async fn oauth_token() -> (axum::http::StatusCode, axum::Json<OAuthErrorResponse>) {
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(OAuthErrorResponse {
+            error: "token_exchange_not_implemented",
+            error_description:
+                "This local stack exposes OAuth discovery metadata but does not issue tokens.",
+        }),
+    )
 }
 
 #[tool_router]
@@ -742,6 +827,28 @@ async fn main() -> Result<()> {
     );
     let app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(oauth_authorization_server),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server/mcp",
+            get(oauth_authorization_server),
+        )
+        .route(
+            "/mcp/.well-known/oauth-authorization-server",
+            get(oauth_authorization_server),
+        )
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(oauth_resource_server),
+        )
+        .route(
+            "/mcp/.well-known/oauth-protected-resource",
+            get(oauth_resource_server),
+        )
+        .route("/oauth/authorize", get(oauth_authorize))
+        .route("/oauth/token", get(oauth_token))
         .nest_service("/mcp", service);
     let addr: SocketAddr = bind_addr
         .parse()
