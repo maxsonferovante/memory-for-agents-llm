@@ -8,16 +8,17 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars::JsonSchema,
     service::RequestContext,
+    tool, tool_handler, tool_router,
     transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
     },
-    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
+    ErrorData as McpError, RoleServer, ServerHandler,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -69,7 +70,11 @@ fn oauth_authorization_server_metadata() -> OAuthAuthorizationServerMetadata {
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256", "plain"],
-        token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+        token_endpoint_auth_methods_supported: [
+            "none",
+            "client_secret_post",
+            "client_secret_basic",
+        ],
         scopes_supported: ["openid", "profile", "offline_access"],
         introspection_endpoint: "http://127.0.0.1:8080/oauth/introspect",
         revocation_endpoint: "http://127.0.0.1:8080/oauth/revoke",
@@ -163,6 +168,29 @@ struct ResourceArgs {
     repo: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ContextPackArgs {
+    task: String,
+    repo: Option<String>,
+    scope: Option<String>,
+    budget: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SpecContextArgs {
+    spec_id: String,
+    repo: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RecentEventsArgs {
+    repo: Option<String>,
+    scope: Option<String>,
+    event_types: Option<Vec<String>>,
+    limit: Option<u32>,
+}
+
 #[derive(Debug, FromRow)]
 struct MemoryItemRow {
     id: String,
@@ -197,6 +225,22 @@ struct MemoryChunkRow {
     source_file: String,
     provenance: Value,
     created_at: String,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct EventRow {
+    id: String,
+    event_type: String,
+    repo: String,
+    branch: Option<String>,
+    commit_sha: Option<String>,
+    file_path: Option<String>,
+    scope: Option<String>,
+    source: Option<String>,
+    session_id: Option<String>,
+    created_at: String,
+    content_hash: String,
+    status: String,
 }
 
 #[derive(Debug, FromRow)]
@@ -390,10 +434,7 @@ async fn fetch_item_chunks(pool: &PgPool, item_id: &str) -> Result<Vec<MemoryChu
     .fetch_all(pool)
     .await?;
     rows.into_iter()
-        .map(|row| {
-            memory_chunk_from_row(row)
-                .map_err(|error| sqlx::Error::Decode(Box::new(error)))
-        })
+        .map(|row| memory_chunk_from_row(row).map_err(|error| sqlx::Error::Decode(Box::new(error))))
         .collect()
 }
 
@@ -425,6 +466,44 @@ async fn fetch_items_for_repo(pool: &PgPool, repo: &str) -> Result<Vec<MemoryIte
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(memory_item_from_row).collect())
+}
+
+async fn fetch_recent_events(
+    pool: &PgPool,
+    repo: Option<String>,
+    scope: Option<String>,
+    event_types: Option<Vec<String>>,
+    limit: i64,
+) -> Result<Vec<EventRow>, sqlx::Error> {
+    sqlx::query_as::<_, EventRow>(
+        r#"
+        SELECT
+            id,
+            event_type,
+            repo,
+            branch,
+            commit_sha,
+            file_path,
+            scope,
+            source,
+            session_id,
+            created_at,
+            content_hash,
+            status
+        FROM ingest_events
+        WHERE ($1::text IS NULL OR repo = $1)
+          AND ($2::text IS NULL OR scope = $2)
+          AND ($3::text[] IS NULL OR event_type = ANY($3))
+        ORDER BY created_at DESC
+        LIMIT $4
+        "#,
+    )
+    .bind(repo)
+    .bind(scope)
+    .bind(event_types)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
 }
 
 async fn oauth_authorization_server() -> axum::Json<OAuthAuthorizationServerMetadata> {
@@ -586,14 +665,12 @@ impl MemoryServer {
     fn get_memory_item(&self, Parameters(args): Parameters<ItemArgs>) -> Result<String, McpError> {
         tracing::info!(item_id = %args.id, "mcp get_memory_item called");
         let pool = Arc::clone(&self.pool);
-        let item = self
-            .run_db(fetch_item(&pool, &args.id))?
-            .ok_or_else(|| {
-                McpError::resource_not_found(
-                    "memory_item_not_found",
-                    Some(serde_json::json!({ "id": args.id })),
-                )
-            })?;
+        let item = self.run_db(fetch_item(&pool, &args.id))?.ok_or_else(|| {
+            McpError::resource_not_found(
+                "memory_item_not_found",
+                Some(serde_json::json!({ "id": args.id })),
+            )
+        })?;
         let chunks = self.run_db(fetch_item_chunks(&pool, &item.id))?;
         tracing::info!(item_id = %item.id, chunk_count = chunks.len(), "mcp get_memory_item completed");
         Ok(serde_json::json!({
@@ -623,13 +700,136 @@ impl MemoryServer {
         })
         .to_string())
     }
+
+    #[tool(description = "Build a Spec Memory context pack for a task, scope, and token budget")]
+    fn build_context_pack(
+        &self,
+        Parameters(args): Parameters<ContextPackArgs>,
+    ) -> Result<String, McpError> {
+        let limit = args.budget.unwrap_or(DEFAULT_LIMIT as u32).clamp(1, 50);
+        let query = format!("{} spec plan tasks adr decision lesson", args.task);
+        let search_args = SearchArgs {
+            query,
+            repo: args.repo.clone(),
+            scope: args.scope.clone(),
+            kind: None,
+            limit: Some(limit),
+        };
+        let search = self.search_memory(Parameters(search_args))?;
+        Ok(serde_json::json!({
+            "task": args.task,
+            "repo": args.repo,
+            "scope": args.scope,
+            "budget": limit,
+            "context": serde_json::from_str::<Value>(&search).unwrap_or_else(|_| Value::String(search)),
+            "contract": {
+                "write_path": "emit structured events through the Memory API",
+                "read_path": "consume this context through MCP",
+                "runtime_rule": "runtimes are adapters, not memory stores"
+            }
+        })
+        .to_string())
+    }
+
+    #[tool(description = "Get Spec Kit context by spec id from indexed memory and recent events")]
+    fn get_spec_context(
+        &self,
+        Parameters(args): Parameters<SpecContextArgs>,
+    ) -> Result<String, McpError> {
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT as u32).clamp(1, 50);
+        let search_args = SearchArgs {
+            query: format!(
+                "{} requirements clarifications plan tasks analysis implementation",
+                args.spec_id
+            ),
+            repo: args.repo.clone(),
+            scope: Some("feature".to_string()),
+            kind: None,
+            limit: Some(limit),
+        };
+        let search = self.search_memory(Parameters(search_args))?;
+        let pool = Arc::clone(&self.pool);
+        let events = self.run_db(fetch_recent_events(
+            &pool,
+            args.repo.clone(),
+            None,
+            Some(vec![
+                "spec.created".to_string(),
+                "spec.updated".to_string(),
+                "requirement.created".to_string(),
+                "requirement.updated".to_string(),
+                "plan.created".to_string(),
+                "tasks.generated".to_string(),
+                "analysis.completed".to_string(),
+                "implementation.completed".to_string(),
+            ]),
+            limit as i64,
+        ))?;
+        Ok(serde_json::json!({
+            "spec_id": args.spec_id,
+            "repo": args.repo,
+            "memory": serde_json::from_str::<Value>(&search).unwrap_or_else(|_| Value::String(search)),
+            "recent_events": events,
+        })
+        .to_string())
+    }
+
+    #[tool(description = "List recent Spec Memory events by repo, scope, and event type")]
+    fn list_recent_events(
+        &self,
+        Parameters(args): Parameters<RecentEventsArgs>,
+    ) -> Result<String, McpError> {
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT as u32).clamp(1, 100) as i64;
+        let pool = Arc::clone(&self.pool);
+        let events = self.run_db(fetch_recent_events(
+            &pool,
+            args.repo.clone(),
+            args.scope.clone(),
+            args.event_types.clone(),
+            limit,
+        ))?;
+        Ok(serde_json::json!({
+            "count": events.len(),
+            "events": events,
+        })
+        .to_string())
+    }
+
+    #[tool(description = "Explain one memory item with provenance and supersession data")]
+    fn explain_memory(&self, Parameters(args): Parameters<ItemArgs>) -> Result<String, McpError> {
+        let pool = Arc::clone(&self.pool);
+        let item = self.run_db(fetch_item(&pool, &args.id))?.ok_or_else(|| {
+            McpError::resource_not_found(
+                "memory_item_not_found",
+                Some(serde_json::json!({ "id": args.id })),
+            )
+        })?;
+        let chunks = self.run_db(fetch_item_chunks(&pool, &item.id))?;
+        Ok(serde_json::json!({
+            "memory_id": item.id,
+            "status": item.status,
+            "scope": item.scope,
+            "kind": item.kind,
+            "title": item.title,
+            "summary": item.summary,
+            "source_file": item.source_file,
+            "event_id": item.event_id,
+            "supersedes_id": item.supersedes_id,
+            "provenance": item.provenance,
+            "chunk_count": chunks.len(),
+            "retrieval_guidance": "Prefer active memory; follow supersession links before applying deprecated knowledge."
+        })
+        .to_string())
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MemoryServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("Search the local memory index and read structured resources.".into()),
+            instructions: Some(
+                "Search the local memory index and read structured resources.".into(),
+            ),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
@@ -671,15 +871,17 @@ impl ServerHandler for MemoryServer {
         .await
         .map_err(database_error)?;
 
-        let mut resources = vec![
-            RawResource::new("memory://org/invariants", "org invariants").no_annotation(),
-        ];
+        let mut resources =
+            vec![RawResource::new("memory://org/invariants", "org invariants").no_annotation()];
         for item in items.into_iter().map(memory_item_from_row) {
             resources.push(
                 RawResource::new(format!("memory://items/{}", item.id), item.title).no_annotation(),
             );
         }
-        tracing::info!(resource_count = resources.len(), "mcp list_resources completed");
+        tracing::info!(
+            resource_count = resources.len(),
+            "mcp list_resources completed"
+        );
         Ok(ListResourcesResult {
             resources,
             next_cursor: None,
@@ -781,7 +983,63 @@ impl ServerHandler for MemoryServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
-            resource_templates: vec![],
+            resource_templates: vec![
+                RawResourceTemplate {
+                    uri_template: "memory://org/{org_id}".to_string(),
+                    name: "organization memory".to_string(),
+                    title: None,
+                    description: Some("Organization-wide active memory and governance".to_string()),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "memory://product/{product_id}".to_string(),
+                    name: "product memory".to_string(),
+                    title: None,
+                    description: Some(
+                        "Product architecture, policies, and cross-repo knowledge".to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "memory://repo/{repo_id}".to_string(),
+                    name: "repository memory".to_string(),
+                    title: None,
+                    description: Some(
+                        "Repository conventions, local exceptions, and active specs".to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "memory://spec/{spec_id}".to_string(),
+                    name: "spec memory".to_string(),
+                    title: None,
+                    description: Some(
+                        "Feature memory, requirements, clarifications, tasks, and evidence"
+                            .to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "memory://adr/{adr_id}".to_string(),
+                    name: "architecture decision".to_string(),
+                    title: None,
+                    description: Some(
+                        "Architecture decision, alternatives, consequences, and linked events"
+                            .to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+            ],
             next_cursor: None,
             meta: None,
         })
