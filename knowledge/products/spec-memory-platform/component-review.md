@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-component-review-v1
+id: spec-memory-platform-component-review-v1
 type: canonical
 scope: product
 status: active
@@ -9,66 +9,61 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Current component review
 
-## Problem
+## Review principle
 
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
-
-## Summary
-
-The current repository is valuable as a phase-1 reference, but it is runtime-centric in several places. The target design keeps durable knowledge, hooks, skills, MCP, and the local stack, while demoting agents and runtime instruction files to adapters or examples.
+Prioritize simplicity. Remove, merge, or demote components that do not clearly support Spec Kit artifacts, event capture, memory processing, knowledge projection, MCP retrieval, or runtime adaptation.
 
 ## Component decisions
 
-| Component | Problem solved today | Keep? | Target action |
+| Component | Problem solved today | Still needed? | Replacement or simplification |
 | --- | --- | --- | --- |
-| `knowledge/` | Durable Markdown knowledge across scopes | Yes | Keep as Knowledge Base projection aligned to Spec, ADR, Event, and Memory taxonomy. |
-| `knowledge/_proposals/` | Draft memory and ADR updates | Yes | Keep as candidate-memory workflow connected to source events. |
-| `knowledge/specs/` | SDD specs and history | Yes | Make it the primary feature-memory anchor. |
-| `knowledge/adr/` | Architecture decisions | Yes | Keep; emit `architecture.decision.created` events. |
-| `hooks/` | Enforcement, ingestion, promotion | Yes | Keep only for event capture, mandatory validation, memory updates, and summary generation. |
-| `local_stack/` | Local API, worker, and MCP | Yes | Evolve into Event Store, Memory Store, Processing, and MCP reference implementation. |
-| `.agents/skills/` | Reusable Codex workflows | Yes | Keep for decision classification, ADR generation, implementation summaries, memory consolidation, and context retrieval. |
-| `.claude/skills/` | Claude reusable workflows | Conditional | Keep as Claude adapter packaging for the same responsibilities. |
-| `.claude/agents/` | Specialized Claude subagents | Reduce | Remove or archive unless simpler mechanisms cannot solve the problem. |
-| `.codex/agents/` | Specialized Codex subagents | Reduce | Treat as optional runtime convenience. |
-| `CLAUDE.md` | Claude operating rules | Adapter only | Keep minimal runtime adapter instructions. |
-| `CODEX.md` and `.codex/config.toml` | Codex operating config | Adapter only | Keep operational config and MCP discovery. |
-| `.github/workflows/` | PR and image automation | Yes | Add event-producing workflows for PR, commit, CI, and release evidence. |
-| Installer scripts | Copy runtime assets locally | Conditional | Keep during migration; reduce once MCP and adapters are discoverable. |
-| Session templates | Repeatable agent prompts | Conditional | Replace durable guidance with Spec Kit artifact templates. |
+| `knowledge/` | Durable knowledge by scope. | Yes. | Keep as Knowledge Base projection derived from events and curation. |
+| `knowledge/_proposals/` | Draft updates before canonical promotion. | Yes. | Keep as candidate-memory review workflow. |
+| `knowledge/specs/` | SDD specs and historical specs. | Yes. | Make it the primary feature-memory anchor. |
+| `knowledge/adr/` | Architecture decisions. | Yes. | Keep and link ADRs to `architecture.decision.created` events. |
+| `hooks/` | Enforcement, ingestion, and promotion. | Yes, narrowed. | Use only for event capture, mandatory validation, memory updates, and summaries. |
+| `local_stack/` | Local API, worker, and MCP stack. | Yes. | Evolve into Event Store, Memory Store, Processing, and MCP reference implementation. |
+| `.agents/skills/` | Codex reusable workflows. | Yes, narrowed. | Use for decision classification, ADR generation, implementation summaries, memory consolidation, and context retrieval. |
+| `.claude/skills/` | Claude reusable workflows. | Conditional. | Keep as Claude packaging for shared skill responsibilities. |
+| `.claude/agents/` | Specialized Claude subagents. | Not by default. | Archive or keep only with documented ROI and no simpler alternative. |
+| `.codex/agents/` | Specialized Codex subagents. | Not by default. | Treat as optional runtime UX; avoid platform dependency. |
+| `CLAUDE.md` | Claude operating rules. | Adapter only. | Keep minimal setup and MCP instructions; no canonical memory. |
+| `CODEX.md` and `.codex/config.toml` | Codex operating config. | Adapter only. | Keep operational settings and MCP discovery. |
+| `.github/workflows/` | Automation for PRs, images, checks. | Yes. | Add event-producing workflows for PR, commit, CI, and release evidence. |
+| Installer scripts | Copy runtime assets. | Transitional. | Keep until adapters and MCP discovery are stable. |
+| Session templates | Repeatable prompts. | Conditional. | Replace durable guidance with Spec Kit artifact templates. |
 
 ## Agents policy
 
-Assume no custom agents are needed by default. A new agent requires a documented reason, operational cost, and simpler alternative analysis. Prefer document, workflow, hook, skill, MCP tool, then agent.
+Start from zero custom agents. A proposed agent must document:
+
+- Problem solved.
+- Reason a hook, skill, workflow, document, or MCP tool is insufficient.
+- Operational cost.
+- Runtime portability risk.
+- Simpler alternative considered.
 
 ## Hooks policy
 
-Hooks are preferred over agents only for event capture, mandatory validation, memory updates, and summary generation. Hooks must not contain product business logic.
+Hooks are preferable to agents only for:
+
+- Event capture.
+- Mandatory validation.
+- Memory update requests.
+- Summary generation.
+
+Hooks must not contain product business logic.
 
 ## Skills policy
 
-Skills should perform bounded cognitive workflows: classify decisions, generate ADRs, summarize implementation, consolidate memory, and retrieve context.
+Skills are appropriate for bounded cognitive workflows:
 
-## Consequences
+- Decision classification.
+- ADR generation.
+- Implementation summary generation.
+- Memory consolidation.
+- Context retrieval and context-pack assembly.
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+Skills must produce artifacts or events; they must not become durable memory stores.

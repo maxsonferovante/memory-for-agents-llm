@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-runtime-adapters-v1
+id: spec-memory-platform-runtime-adapters-v1
 type: canonical
 scope: product
 status: active
@@ -9,54 +9,49 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Runtime adapters
-
-## Problem
-
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
 
 ## Adapter contract
 
-Every adapter translates runtime-specific signals into the shared event envelope. Adapters are replaceable and must avoid owning memory semantics.
+Every adapter translates runtime-specific signals into the shared event envelope and retrieves context through MCP. Adapters must be thin, replaceable, and free of durable memory semantics.
 
-## Claude Code
+## Claude Code adapter
 
-Claude Code may produce events through hooks, skills, and slash-command wrappers. It handles local generation, implementation, command execution, and hook invocation, not durable storage.
+- Produces events through hooks, skills, and slash-command wrappers.
+- Captures local command evidence and artifact updates.
+- Consumes context through MCP resources and tools.
+- Does not own persistent memory or organizational knowledge.
 
-## OpenAI Codex
+## OpenAI Codex adapter
 
-Codex may produce events through commands, hooks, and repository workflows. It consumes context through MCP and emits events for spec updates, task completion, analysis, implementation summaries, and review evidence.
+- Produces events through commands, hooks, and repository workflows.
+- Emits events for spec updates, task completion, analysis, implementation summaries, and review evidence.
+- Consumes context through MCP.
+- Does not write directly to memory storage.
 
-## GitHub Copilot
+## GitHub Copilot adapter
 
-Copilot may produce events from agent-mode actions, review comments, pull-request summaries, and implementation assistance after mapping observations to Spec Kit artifacts or review events.
+- Produces events from agent-mode activity, review comments, PR summaries, and implementation assistance.
+- Maps observations to Spec Kit artifacts, tasks, or review events before ingestion.
+- Consumes context through MCP where supported.
 
-## GitHub Actions and CI/CD
+## GitHub Actions and CI/CD adapter
 
-CI/CD adapters emit deterministic events for commits, pull requests, checks, releases, dependency changes, and validation outcomes.
+- Produces deterministic events for commits, pull requests, checks, releases, dependency changes, and validation outcomes.
+- Uses deterministic event IDs so reruns are idempotent.
+- Provides high-confidence evidence for implementation and review memory.
 
-## Pull requests and commits
+## Pull request and commit adapter
 
-Git adapters produce events from changed Spec Kit artifacts, ADRs, task files, implementation diffs, and merge metadata. Commit messages are metadata, not memory by themselves.
+- Detects changed Spec Kit artifacts, ADRs, task files, implementation diffs, and merge metadata.
+- Emits events linked to commit SHA, PR number, and changed paths.
+- Treats commit messages as metadata, not durable memory by themselves.
 
-## Consequences
+## Adapter acceptance checklist
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+- Emits the shared envelope.
+- Includes artifact path and version when applicable.
+- Includes scope and provenance.
+- Handles retries idempotently.
+- Uses MCP for reads.
+- Contains no platform-specific business logic beyond translation.

@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-flows-v1
+id: spec-memory-platform-flows-v1
 type: canonical
 scope: product
 status: active
@@ -9,51 +9,53 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Spec Memory Platform flows
 
-## Problem
+## Official feature flow
 
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
+Every feature starts and ends in the GitHub Spec Kit lifecycle:
 
-## Proposal
-
-## Official Spec Kit flow
-
-Every feature follows `/speckit.constitution`, `/speckit.specify`, `/speckit.clarify`, `/speckit.checklist`, `/speckit.plan`, `/speckit.tasks`, `/speckit.analyze`, and `/speckit.implement`.
+1. `/speckit.constitution` records non-negotiable principles, quality bars, and governance.
+2. `/speckit.specify` creates the user-visible specification and requirements.
+3. `/speckit.clarify` records questions, answers, assumptions, and scope decisions.
+4. `/speckit.checklist` verifies specification readiness.
+5. `/speckit.plan` defines implementation strategy, architecture impact, and dependencies.
+6. `/speckit.tasks` decomposes the plan into executable work.
+7. `/speckit.analyze` checks consistency, risk, security, and drift.
+8. `/speckit.implement` executes tasks and records completion evidence.
 
 ## Event capture flow
 
-1. Runtime, Git, CI, or PR activity changes or observes a Spec Kit artifact.
-2. Adapter emits a structured event with artifact references and provenance.
-3. Memory API validates the event envelope and stores it in the Event Store.
-4. Processing derives memory candidates and retrieval chunks.
-5. Curators or automated policies approve stable memory updates.
-6. MCP exposes scoped context back to runtimes.
+| Step | Producer | Event examples | Output |
+| --- | --- | --- | --- |
+| Artifact authored | Runtime or human | `spec.created`, `plan.created` | Stored event with artifact version. |
+| Artifact updated | Runtime, human, PR | `spec.updated`, `requirement.updated` | Changed sections and provenance. |
+| Validation runs | Hook or CI | `analysis.completed`, `inconsistency.detected` | Check evidence and failures. |
+| Implementation starts | Runtime or task runner | `implementation.started`, `task.completed` | Task linkage and command evidence. |
+| Review completes | PR or review agent | `review.completed` | Findings, approvals, and required fixes. |
+| Learning emerges | Retrospective or curator | `lesson.learned`, `improvement.suggested` | Candidate memory. |
 
 ## Memory consolidation flow
 
-Session and feature events are grouped by spec, repo, product, and decision. Repeated or high-impact facts become candidate repository, product, or organization memory. Accepted candidates are promoted with provenance and supersession links.
+1. Session Memory captures short-lived context during one run.
+2. Feature Memory aggregates events by Spec Kit feature and spec ID.
+3. Repository Memory is proposed when a fact affects future work in one repository.
+4. Product Memory is proposed when the fact applies across repositories in one product.
+5. Organizational Memory is proposed when the fact becomes a cross-product invariant.
+6. Deprecated memory remains retrievable with replacement guidance.
 
-## Cross-repository sharing flow
+## Retrieval flow
 
-Repository events can propose higher-scope memory. Product or organization owners accept, reject, or narrow the scope, and repo-local notes link to shared memory instead of duplicating it.
+1. Runtime asks MCP for context by task, spec, repo, product, or question.
+2. MCP resolves scope and calls Context Retrieval API.
+3. Retrieval selects active memory, related ADRs, relevant events, and artifact snippets.
+4. MCP returns a compact context pack with citations, confidence, and known gaps.
+5. Runtime uses the context but does not persist memory directly.
 
-## Consequences
+## Feedback flow
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+1. Implementation and review outcomes emit events.
+2. Processing detects repeated patterns, inconsistencies, or durable lessons.
+3. A memory candidate is created with provenance.
+4. Curators approve, reject, narrow, or deprecate memory.
+5. New memory becomes available through MCP.

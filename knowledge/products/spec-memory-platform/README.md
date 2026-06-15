@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-readme-v1
+id: spec-memory-platform-v1
 type: canonical
 scope: product
 status: active
@@ -9,28 +9,19 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Spec Memory Platform
-
-## Problem
-
-The current memory architecture is useful but needs a Spec Kit-first target that is independent from Claude Code, Codex, Copilot, or any future runtime.
-
-## Proposal
-
-## Status
-
-Proposed target architecture for replacing runtime-centric agent memory with a Spec Kit-oriented memory, context, and continuous-learning platform.
 
 ## Mission
 
-Spec Memory Platform is a runtime-agnostic memory platform for software-development agents. GitHub Spec Kit artifacts define the process, and Claude Code, OpenAI Codex, GitHub Copilot, and future MCP-compatible agents are interchangeable producers and consumers.
+Spec Memory Platform is a runtime-agnostic memory, context, and continuous-learning platform for software-development agents. The platform is organized around GitHub Spec Kit artifacts, structured events, derived memory, and MCP retrieval so Claude Code, OpenAI Codex, GitHub Copilot, and future MCP-compatible runtimes can be replaced without changing the development process.
 
 ## Fundamental principle
 
-The process is stable; the agent runtime is replaceable. Customizations must surround the official Spec Kit flow and must not fork, rename, skip, or reorder it.
+The process is stable; the agent runtime is replaceable. The platform must be designed around specs, plans, tasks, ADRs, decisions, events, and memory instead of `CLAUDE.md`, Codex instructions, Copilot prompts, or any other runtime-specific instruction file.
 
-Official flow:
+## Mandatory Spec Kit flow
+
+No customization may fork, rename, skip, reorder, or replace the official flow:
 
 1. `/speckit.constitution`
 2. `/speckit.specify`
@@ -41,13 +32,23 @@ Official flow:
 7. `/speckit.analyze`
 8. `/speckit.implement`
 
+Extensions must exist around this flow as adapters, validators, event producers, processors, retrieval tools, or documentation.
+
 ## Conceptual model
 
 ```text
-Human -> Spec Kit -> Artifacts -> Event Capture -> Memory API -> Memory Processing -> Knowledge Base -> Context Retrieval -> Agent Runtime
+Human
+  -> Spec Kit
+  -> Artifacts
+  -> Event Capture
+  -> Memory API
+  -> Memory Processing
+  -> Knowledge Base
+  -> Context Retrieval
+  -> Agent Runtime
 ```
 
-## Architecture documents
+## Architecture package
 
 - [Architecture](./architecture.md)
 - [Flows](./flows.md)
@@ -58,6 +59,7 @@ Human -> Spec Kit -> Artifacts -> Event Capture -> Memory API -> Memory Processi
 - [Runtime adapters](./runtime-adapters.md)
 - [Current component review](./component-review.md)
 - [Migration plan](./migration-plan.md)
+- [Implementation planning](./implementation-planning.md)
 
 ## Decision records
 
@@ -67,26 +69,7 @@ Human -> Spec Kit -> Artifacts -> Event Capture -> Memory API -> Memory Processi
 
 ## Non-goals
 
-- Persisting raw chat logs as durable memory.
-- Making runtime prompts or instructions the architectural source of truth.
+- Persisting raw conversations as durable memory.
+- Making runtime prompts the architecture source of truth.
 - Encoding business logic inside hooks.
-- Creating specialized agents before a hook, skill, workflow, or document is proven insufficient.
-
-## Consequences
-
-- The platform boundary moves from runtime-specific instructions to Spec Kit artifacts, events, memory, and MCP.
-- Runtime assets become adapters and optional UX conveniences.
-- Future implementation can evolve the local stack without changing the official Spec Kit flow.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [knowledge/README.md](../../../knowledge/README.md)
-- [local_stack/README.md](../../../local_stack/README.md)
-
-## Acceptance criteria
-
-- The proposal preserves the official Spec Kit flow.
-- The proposal treats runtimes as replaceable producers and consumers.
-- The proposal defines durable knowledge outside runtime-specific prompts.
+- Creating specialized agents before a document, workflow, hook, skill, or MCP tool is proven insufficient.

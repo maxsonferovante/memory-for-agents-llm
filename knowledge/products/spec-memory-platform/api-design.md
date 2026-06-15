@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-api-v1
+id: spec-memory-platform-api-v1
 type: canonical
 scope: product
 status: active
@@ -9,55 +9,52 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # API design
 
-## Problem
+## API boundaries
 
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
+The Memory API is the write boundary. The Context Retrieval API is the read/query boundary used by MCP. Runtime adapters must not write directly to the database or bypass schema validation.
 
 ## Event Store API
 
-- `POST /events` validates one event envelope, enforces idempotency, and appends the event.
-- `POST /events/batch` accepts Git, CI, or migration backfills.
-- `GET /events/{event_id}` returns the canonical event and processing status.
-- `GET /events?scope=...` returns events by organization, product, repository, spec, feature, artifact, event type, or time range.
+| Endpoint | Purpose | Notes |
+| --- | --- | --- |
+| `POST /events` | Accept one event envelope. | Validates schema, scope, provenance, idempotency, and authorization. |
+| `POST /events/batch` | Accept Git, PR, CI, or migration batches. | Returns accepted, duplicate, and rejected items. |
+| `GET /events/{event_id}` | Fetch canonical event and processing status. | Useful for debugging adapters. |
+| `GET /events` | Query events by scope, artifact, type, correlation, actor, or time. | Requires scoped authorization. |
 
 ## Memory Store API
 
-- `GET /memory/{memory_id}` returns a derived memory item with scope, status, provenance, and supersession links.
-- `POST /memory/candidates` creates a candidate memory item.
-- `POST /memory/{memory_id}/accept` promotes a candidate into active memory.
-- `POST /memory/{memory_id}/deprecate` records replacement guidance.
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /memory/{memory_id}` | Return memory item, status, provenance, and supersession history. |
+| `POST /memory/candidates` | Create candidate memory from events or curation. |
+| `POST /memory/{memory_id}/accept` | Promote candidate memory into active memory. |
+| `POST /memory/{memory_id}/deprecate` | Deprecate memory with replacement guidance. |
+| `GET /memory` | Query memory by scope, tag, status, owner, spec, repo, product, or dependency. |
 
 ## Context Retrieval API
 
-- `POST /context/query` retrieves scoped context.
-- `POST /context/pack` builds compact task context.
-- `GET /context/spec/{spec_id}` returns feature memory, ADRs, tasks, dependency decisions, and lessons.
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /context/query` | Retrieve scoped memory and evidence for a question. |
+| `POST /context/pack` | Build compact context for an active task and token budget. |
+| `GET /context/spec/{spec_id}` | Return requirements, clarifications, tasks, ADRs, lessons, and active memory for a spec. |
+| `GET /context/repo/{repo_id}` | Return repo conventions, local exceptions, active specs, and relevant product memory. |
 
 ## Processing API
 
-- `POST /processing/replay` rebuilds projections and indexes from events.
-- `GET /processing/status` reports lag, failed events, index health, and projection versions.
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /processing/replay` | Rebuild projections and indexes from Event Store. |
+| `POST /processing/reindex` | Rebuild retrieval indexes without rewriting events. |
+| `GET /processing/status` | Report lag, failed events, projection versions, and index health. |
 
-## Consequences
+## Error model
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+- `400`: invalid schema or missing required artifact data.
+- `401`/`403`: unauthenticated or unauthorized runtime/actor.
+- `409`: duplicate event or idempotency conflict.
+- `422`: valid JSON that cannot map to Spec Kit concepts.
+- `503`: processing unavailable; ingestion may still accept append-only events if storage is healthy.

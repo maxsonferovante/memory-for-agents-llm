@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-events-v1
+id: spec-memory-platform-events-v1
 type: canonical
 scope: product
 status: active
@@ -9,95 +9,101 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Event taxonomy and schemas
-
-## Problem
-
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
 
 ## Event envelope
 
-All producers emit `event_id`, `event_type`, `schema_version`, `occurred_at`, `producer`, `scope`, `actor`, `artifact`, `correlation`, `payload`, and `provenance`.
+All producers must emit the same envelope. Runtime-specific details belong in `producer` or adapter metadata, not in the event type system.
 
-## Required event types
+```json
+{
+  "event_id": "uuid-or-deterministic-id",
+  "event_type": "spec.created",
+  "schema_version": "1.0",
+  "occurred_at": "2026-06-15T00:00:00Z",
+  "producer": {
+    "runtime": "claude-code|codex|copilot|github-actions|git|ci|manual",
+    "adapter": "adapter-name",
+    "version": "semver"
+  },
+  "scope": {
+    "org": "org-id",
+    "product": "product-id",
+    "repository": "repo-name",
+    "spec": "spec-id",
+    "feature": "feature-id"
+  },
+  "actor": {
+    "type": "human|agent|system",
+    "id": "stable-actor-id"
+  },
+  "artifact": {
+    "kind": "constitution|spec|clarification|checklist|plan|tasks|analysis|implementation|review|adr|memory",
+    "path": "relative/path.md",
+    "uri": "optional-canonical-uri",
+    "version": "git-sha-or-artifact-version"
+  },
+  "correlation": {
+    "session_id": "session-id",
+    "trace_id": "trace-id",
+    "parent_event_id": "optional-event-id",
+    "pull_request": "optional-pr-number",
+    "commit": "optional-git-sha"
+  },
+  "payload": {},
+  "provenance": {
+    "source_url": "optional-url",
+    "evidence": ["paths", "commands", "checks"]
+  }
+}
+```
 
-### Constitution
+## Taxonomy
 
-- `constitution.created`
-- `constitution.updated`
+| Category | Events |
+| --- | --- |
+| Constitution | `constitution.created`, `constitution.updated` |
+| Specification | `spec.created`, `spec.updated`, `requirement.created`, `requirement.updated` |
+| Clarification | `clarification.requested`, `clarification.resolved` |
+| Planning | `plan.created`, `architecture.decision.created`, `dependency.selected` |
+| Tasks | `tasks.generated`, `task.created`, `task.completed` |
+| Analysis | `analysis.completed`, `inconsistency.detected` |
+| Implementation | `implementation.started`, `implementation.completed` |
+| Review | `review.completed` |
+| Retrospective | `lesson.learned`, `improvement.suggested` |
+| Memory | `memory.created`, `memory.updated`, `memory.deprecated`, `memory.consolidated` |
 
-### Specification
+## Payload rules
 
-- `spec.created`
-- `spec.updated`
-- `requirement.created`
-- `requirement.updated`
+- Payloads must describe Spec Kit artifacts, decisions, tasks, checks, and evidence.
+- Raw conversations may be referenced as non-canonical provenance only when policy allows it.
+- Event IDs should be deterministic for Git, PR, CI, and migration replays.
+- Every memory-changing event must include scope, artifact, and provenance.
+- Schema changes must be versioned and replayable.
 
-### Clarification
+## Example payloads
 
-- `clarification.requested`
-- `clarification.resolved`
+### `architecture.decision.created`
 
-### Planning
+```json
+{
+  "adr_id": "adr-0042",
+  "title": "Use MCP as context consumption layer",
+  "status": "proposed",
+  "decision_scope": "product",
+  "alternatives": ["runtime-specific retrieval", "markdown-only context"],
+  "consequences": ["runtimes consume one read surface", "database remains hidden"]
+}
+```
 
-- `plan.created`
-- `architecture.decision.created`
-- `dependency.selected`
+### `task.completed`
 
-### Tasks
-
-- `tasks.generated`
-- `task.created`
-- `task.completed`
-
-### Analysis
-
-- `analysis.completed`
-- `inconsistency.detected`
-
-### Implementation
-
-- `implementation.started`
-- `implementation.completed`
-
-### Review
-
-- `review.completed`
-
-### Retrospective
-
-- `lesson.learned`
-- `improvement.suggested`
-
-### Memory
-
-- `memory.created`
-- `memory.updated`
-- `memory.deprecated`
-- `memory.consolidated`
-
-## Payload conventions
-
-Payloads describe Spec Kit artifacts, decisions, and evidence, not runtime transcripts. Runtime details stay in producer metadata. Event IDs should be deterministic for reprocessed Git, PR, or CI evidence.
-
-## Consequences
-
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+```json
+{
+  "task_id": "T-014",
+  "spec_id": "spec-memory-platform",
+  "summary": "Added event envelope validation",
+  "changed_paths": ["local_stack/api/src/events.rs"],
+  "checks": ["cargo check"]
+}
+```

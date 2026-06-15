@@ -1,5 +1,5 @@
 ---
-id: prop-adr-spec-memory-event-contract-v1
+id: adr-spec-memory-event-contract-v1
 type: canonical
 scope: product
 status: active
@@ -9,53 +9,29 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # ADR: Use events as the memory write contract
-
-## Problem
-
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
-Hooks, skills, commands, pull requests, commits, and CI can all produce useful knowledge. Without a shared contract, each runtime creates incompatible memory semantics.
+Hooks, skills, commands, pull requests, commits, and CI can all produce useful knowledge. Without one shared write contract, each runtime creates incompatible memory semantics and bypasses governance.
 
 ## Decision
 
-Make structured events the only write contract for durable memory. The Memory API persists append-only events, and memory is derived from those events through replayable processing.
-
-## Alternatives considered
-
-- Let each runtime write directly to Markdown memory.
-- Let runtimes write directly to the database.
+Make structured events the only write contract for durable memory. The Memory API persists append-only events, validates schema and scope, enforces idempotency, and records provenance. Memory is derived from events through replayable processing.
 
 ## Consequences
 
 - Event schema validation becomes mandatory.
+- Runtime adapters remain thin translation layers.
 - Idempotency and provenance are handled centrally.
 - Memory projections can be rebuilt after schema or processing changes.
+- Direct writes from runtimes to durable memory stores are not allowed.
 
-## Consequences
+## Alternatives considered
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+- Let each runtime write directly to Markdown memory. This is simple but creates drift and weak auditability.
+- Let runtimes write directly to the database. This bypasses validation and couples runtimes to storage.

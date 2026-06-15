@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-migration-v1
+id: spec-memory-platform-migration-v1
 type: canonical
 scope: product
 status: active
@@ -9,58 +9,52 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Migration plan
-
-## Problem
-
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
-
-## Proposal
 
 ## Phase 0: Freeze the principle
 
-Declare Spec Kit artifacts as the platform boundary and stop adding runtime-specific memory features unless they map to events.
+- Declare Spec Kit artifacts as the platform boundary.
+- Preserve the official Spec Kit command sequence unchanged.
+- Stop adding runtime-specific memory behavior unless it maps to the event contract.
 
 ## Phase 1: Define contracts
 
-Publish the event envelope, event taxonomy, memory scopes, promotion rules, MCP resources, MCP tools, and ADRs.
+- Publish event envelope and event taxonomy.
+- Publish memory scope taxonomy and promotion rules.
+- Publish API and MCP contracts.
+- Record ADRs for artifact boundary, event write contract, and MCP consumption.
 
 ## Phase 2: Convert hooks to event producers
 
-Map Claude and Codex lifecycle hooks to the shared event schema. Add GitHub Actions events for pull requests, commits, CI, and releases.
+- Map Claude hooks to the shared event envelope.
+- Map Codex hooks and commands to the shared event envelope.
+- Add GitHub Actions events for PRs, commits, checks, releases, and dependency changes.
+- Make hook output deterministic and idempotent.
 
 ## Phase 3: Evolve the local stack
 
-Wrap or rename ingestion as the Memory API, add append-only Event Store tables, add derived Memory Store projections, add replayable processing jobs, and extend MCP.
+- Wrap or rename the ingestion service as the Memory API.
+- Add append-only Event Store tables.
+- Add Memory Store projections for scoped memory.
+- Add replayable processing jobs.
+- Extend MCP with spec, ADR, event, and context-pack resources.
 
 ## Phase 4: Simplify runtime assets
 
-Reduce Claude and Codex agents to optional conveniences. Move durable instructions into Spec Kit docs, ADRs, and memory taxonomy.
+- Reduce custom agents to optional conveniences with explicit ROI.
+- Move durable instructions from runtime files into Spec Kit artifacts, ADRs, and memory docs.
+- Keep runtime files focused on adapter setup, hook wiring, and MCP discovery.
 
 ## Phase 5: Cross-product rollout
 
-Promote stable repository memory into product memory, promote cross-product invariants into organizational memory, and add Knowledge Graph edges.
+- Promote stable repository memory into product memory.
+- Promote cross-product invariants into organizational memory.
+- Add deprecation workflows for obsolete memories.
+- Add Knowledge Graph edges for specs, decisions, dependencies, tasks, reviews, and lessons.
 
 ## Phase 6: Operational hardening
 
-Add schema versioning, migration tools, event replay tests, authorization, tenancy controls, and observability.
-
-## Consequences
-
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
-
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+- Add schema versioning and migration tooling.
+- Add event replay tests.
+- Add authorization and tenancy controls.
+- Add observability for event lag, projection freshness, retrieval quality, and MCP errors.

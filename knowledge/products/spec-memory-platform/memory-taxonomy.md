@@ -1,5 +1,5 @@
 ---
-id: prop-spec-memory-platform-memory-taxonomy-v1
+id: spec-memory-platform-memory-taxonomy-v1
 type: canonical
 scope: product
 status: active
@@ -9,54 +9,48 @@ confidence: high
 reviewed_at: 2026-06-15
 ---
 
-
 # Memory taxonomy
 
-## Problem
+## Scope hierarchy
 
-The platform needs implementable Spec Kit-first documentation that replaces runtime-centric memory design with artifact, event, memory, and MCP contracts.
+| Scope | Lifetime | Content | Promotion trigger |
+| --- | --- | --- | --- |
+| Session Memory | Hours or one agent run | Temporary assumptions, commands, active blockers, unresolved questions. | Summarize into Feature Memory when relevant after session end. |
+| Feature Memory | Feature lifetime plus maintenance | Requirements, clarifications, plan decisions, tasks, analysis, implementation evidence, review outcomes. | Promote when future work in the same repo needs it. |
+| Repository Memory | Repository lifetime | Build conventions, architecture constraints, repo-local exceptions, operational commands. | Promote when multiple repos in a product share it. |
+| Product Memory | Product lifetime | Shared architecture, dependency rules, domain behavior, release policy, quality bars. | Promote when cross-product invariant emerges. |
+| Organizational Memory | Long-lived | Engineering principles, security constraints, governance, naming, compliance, memory policy. | Rare; requires owner approval. |
 
-## Proposal
+## Memory item fields
 
-## Session Memory
+Each memory item should carry:
 
-Short-term memory for one working session. It captures active assumptions, local command results, and unresolved questions, then expires or summarizes into Feature Memory.
-
-## Feature Memory
-
-Memory for one Spec Kit feature. It links requirements, clarifications, plan decisions, task outcomes, implementation evidence, review outcomes, and lessons.
-
-## Repository Memory
-
-Repository-specific conventions, architecture constraints, build/test commands, and exceptions to product or organization rules.
-
-## Product Memory
-
-Knowledge shared across repositories in one product, including product architecture, dependency policy, domain constraints, release rules, and quality bars.
-
-## Organizational Memory
-
-Organization-wide engineering principles, security constraints, architecture standards, memory governance, naming conventions, and cross-product invariants.
+- Stable ID.
+- Scope and owner.
+- Status: `candidate`, `active`, `deprecated`, or `rejected`.
+- Summary and detailed body.
+- Source events and artifact references.
+- Confidence and review timestamp.
+- Supersedes and superseded-by links.
+- Retrieval tags for spec, repo, product, domain, dependency, and decision.
 
 ## Promotion rules
 
-Promote upward only when a fact is stable beyond its current scope. Keep exceptions at the lowest explanatory scope. Deprecate rather than delete when old context may still be retrieved.
+- Promote upward only when the fact is stable beyond the current scope.
+- Keep exceptions at the lowest scope that explains them.
+- Never silently duplicate higher-scope memory into lower-scope notes.
+- Deprecate memory instead of deleting it when a runtime may still retrieve it.
+- Require provenance for every active memory item.
 
-## Consequences
+## Knowledge Graph edges
 
-- Implementers get a concrete target contract.
-- Runtime-specific code can be simplified into adapters.
-- Memory remains derived from structured evidence rather than raw conversations.
+The graph should derive edges such as:
 
-## Sources
-
-- [AGENTS.md](../../../AGENTS.md)
-- [README.md](../../../README.md)
-- [hooks/memory_hooks.py](../../../hooks/memory_hooks.py)
-- [knowledge/org/knowledge-scope-model.md](../../../knowledge/org/knowledge-scope-model.md)
-
-## Acceptance criteria
-
-- The document is runtime-agnostic.
-- The document keeps Spec Kit artifacts as the process source of truth.
-- The document defines a clear migration or implementation contract.
+- spec `defines` requirement
+- requirement `clarified_by` clarification
+- plan `selects` dependency
+- task `implements` requirement
+- ADR `decides` architecture concern
+- review `validates` implementation
+- lesson `updates` memory
+- memory `supersedes` memory
