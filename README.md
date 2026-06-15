@@ -39,6 +39,7 @@ This repository is the reference for a coding-agent memory system that works acr
 
 - Codex can use the repo-local `.codex/` and `.agents/skills/` layers directly after the project is trusted.
 - `scripts/install_codex_assets.py` installs Codex agents, skills, hooks, and MCP config globally into the user-level Codex locations. It requires `--stack-host` so the generated URLs point at the right proxy.
+- `scripts/install_copilot_assets.py` installs GitHub Copilot instructions, prompts, agents, skills, and the Spec Memory event workflow into a target repository. It supports `--target-repo`, `--dry-run`, `--force`, and optional `--stack-host` for the workflow ingest fallback.
 - `scripts/install_claude_assets.py` installs the repo agents, skills, hook wiring, and the project-scoped `localMemory` MCP registration into the local Claude Code config. It also requires `--stack-host`.
 - The installer auto-discovers the target path through `CLAUDE_CONFIG_DIR` or `~/.claude`.
 - The installers run without prompts and support `--dry-run`, `--force`, `--config-dir`, and `--stack-host` when you need to target a remote stack.
@@ -113,6 +114,7 @@ Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.co
 - `python3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1`
 - `python3 scripts/install_claude_assets.py --force --stack-host 127.0.0.1`
 - `python3 scripts/install_codex_assets.py --dry-run --stack-host 127.0.0.1`
+- `python3 scripts/install_copilot_assets.py --dry-run --target-repo /path/to/repo --stack-host 127.0.0.1`
 - `python3 scripts/install_codex_assets.py --force --stack-host 127.0.0.1`
 - `python3 scripts/publish_local_stack_images.py --version v0.1.0 --dry-run`
 - `python3 scripts/package_release.py --version v0.1.0`
