@@ -11,6 +11,10 @@ This skill must finish the job end to end: write the proposal if needed, promote
 
 For the live-session version of this workflow, use `.claude/templates/memory-curator-session.md`.
 
+## Spec Memory Platform contract
+
+Durable memory must be represented as structured events and source-backed proposals. Do not store raw conversation as canonical memory. When a proposal is promoted, the corresponding platform event is `memory.consolidated` unless the task explicitly deprecates or updates existing memory.
+
 ## Required workflow
 
 1. Validate the source trail and target scope.

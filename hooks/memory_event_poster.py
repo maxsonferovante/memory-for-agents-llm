@@ -16,6 +16,16 @@ from urllib import request as urllib_request
 DEFAULT_INGEST_URL = "http://127.0.0.1:8080/api/v1/events"
 PATH_KEYS = ("file_path", "filePath", "path", "target_path")
 CONTENT_KEYS = ("content", "text", "body", "value")
+OFFICIAL_SPEC_KIT_FLOW = (
+    "speckit.constitution",
+    "speckit.specify",
+    "speckit.clarify",
+    "speckit.checklist",
+    "speckit.plan",
+    "speckit.tasks",
+    "speckit.analyze",
+    "speckit.implement",
+)
 
 
 def utc_now() -> str:
@@ -105,24 +115,76 @@ def infer_scope(path_text: str | None) -> str:
         try:
             idx = parts.index("knowledge")
             bucket = parts[idx + 1]
-            return bucket if bucket != "_proposals" else "spec"
+            if bucket == "_proposals":
+                return "feature"
+            if bucket == "products":
+                return "product"
+            if bucket == "org":
+                return "org"
+            if bucket == "repos":
+                return "repo"
+            if bucket == "specs":
+                return "feature"
+            return bucket
         except Exception:
             return "repo"
     return "repo"
 
 
+def infer_artifact_kind(path_text: str | None) -> str:
+    if not path_text:
+        return "implementation"
+    path = Path(path_text)
+    name = path.name.lower()
+    parts = tuple(part.lower() for part in path.parts)
+    if "adr" in parts or name.startswith("adr"):
+        return "adr"
+    if "specs" in parts or "spec" in name:
+        return "spec"
+    if "tasks" in name:
+        return "tasks"
+    if "plan" in name:
+        return "plan"
+    if "checklist" in name:
+        return "checklist"
+    if "constitution" in name:
+        return "constitution"
+    if "analysis" in name or "analyze" in name:
+        return "analysis"
+    if "review" in name:
+        return "review"
+    if "memory" in name or "knowledge" in parts:
+        return "memory"
+    return "implementation" if path.suffix != ".md" else "spec"
+
+
+def infer_spec_event_type(path_text: str | None, content: str | None) -> str:
+    kind = infer_artifact_kind(path_text)
+    text = (content or "").lower()
+    path_exists = bool(path_text and Path(path_text).exists())
+    if kind == "constitution":
+        return "constitution.updated" if path_exists else "constitution.created"
+    if kind == "spec":
+        return "spec.updated" if path_exists else "spec.created"
+    if kind == "plan":
+        return "plan.created"
+    if kind == "tasks":
+        return "tasks.generated"
+    if kind == "analysis":
+        return "inconsistency.detected" if "inconsisten" in text else "analysis.completed"
+    if kind == "adr":
+        return "architecture.decision.created"
+    if kind == "review":
+        return "review.completed"
+    if kind == "memory":
+        if path_text and "_proposals" in Path(path_text).parts:
+            return "memory.created" if "status: ready" not in text else "memory.updated"
+        return "memory.consolidated"
+    return "implementation.completed" if path_text else "implementation.started"
+
+
 def infer_event_type(path_text: str | None, content: str | None) -> str:
-    if path_text:
-        parts = Path(path_text).parts
-        if "knowledge" in parts:
-            if "_proposals" in parts:
-                if content and "status: ready" in content.lower():
-                    return "proposal_ready"
-                return "session_stop"
-            return "memory_promoted"
-        if path_text.endswith(".md"):
-            return "repo_handoff"
-    return "session_stop"
+    return infer_spec_event_type(path_text, content)
 
 
 def build_event(
@@ -169,9 +231,14 @@ def build_event(
         or f"evt_{hashlib.sha256(event_id_seed.encode('utf-8')).hexdigest()[:16]}"
     )
 
+    artifact_kind = infer_artifact_kind(path_text)
     event = {
+        # Legacy fields consumed by the current local_stack API.
         "id": event_id,
+        "event_id": event_id,
         "event_type": resolved_event_type,
+        "schema_version": "1.0",
+        "occurred_at": created_at,
         "repo": repo,
         "branch": branch or None,
         "commit_sha": commit or None,
@@ -183,6 +250,38 @@ def build_event(
         "content_hash": content_hash,
         "content": content,
         "tool_name": payload.get("tool_name"),
+        # Spec Memory Platform envelope fields.
+        "producer": {
+            "runtime": source.replace("-hook", ""),
+            "adapter": "memory_event_poster",
+            "version": "1.0",
+        },
+        "actor": {
+            "type": "agent" if "hook" in source else "system",
+            "id": source,
+        },
+        "artifact": {
+            "kind": artifact_kind,
+            "path": path_text,
+            "uri": f"file://{path_text}" if path_text else None,
+            "version": commit or content_hash,
+        },
+        "correlation": {
+            "session_id": session_id or None,
+            "trace_id": payload.get("trace_id") or event_id,
+            "parent_event_id": payload.get("parent_event_id"),
+            "pull_request": payload.get("pull_request"),
+            "commit": commit or None,
+        },
+        "payload": {
+            "tool_name": payload.get("tool_name"),
+            "official_flow": OFFICIAL_SPEC_KIT_FLOW,
+            "raw_hook_payload": payload,
+        },
+        "provenance": {
+            "source_url": payload.get("source_url"),
+            "evidence": [value for value in (path_text, commit, payload.get("tool_name")) if value],
+        },
     }
     return event
 

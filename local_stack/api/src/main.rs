@@ -8,6 +8,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 use time::OffsetDateTime;
@@ -25,7 +26,10 @@ struct AppState {
 #[derive(Debug, Deserialize, Serialize)]
 struct IngestEventRequest {
     id: Option<String>,
+    event_id: Option<String>,
     event_type: Option<String>,
+    schema_version: Option<String>,
+    occurred_at: Option<String>,
     repo: String,
     branch: Option<String>,
     commit_sha: Option<String>,
@@ -37,6 +41,12 @@ struct IngestEventRequest {
     content_hash: Option<String>,
     content: Option<String>,
     tool_name: Option<String>,
+    producer: Option<Value>,
+    actor: Option<Value>,
+    artifact: Option<Value>,
+    correlation: Option<Value>,
+    payload: Option<Value>,
+    provenance: Option<Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize, FromRow, Clone)]
@@ -114,6 +124,24 @@ struct SimpleResponse {
 #[derive(Debug, Serialize)]
 struct ItemsResponse<T> {
     items: Vec<T>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BatchIngestRequest {
+    events: Vec<IngestEventRequest>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchIngestResponse {
+    accepted: Vec<SimpleResponse>,
+    rejected: Vec<BatchRejectedEvent>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchRejectedEvent {
+    index: usize,
+    status: u16,
+    error: String,
 }
 
 async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
@@ -219,6 +247,8 @@ async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
         $$;
         "#,
         r#"CREATE INDEX IF NOT EXISTS idx_job_queue_status_next_run ON job_queue(status, next_run_at)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_ingest_events_type_scope ON ingest_events(event_type, scope)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_ingest_events_file_path ON ingest_events(file_path)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_items_repo_scope ON memory_items(repo, scope)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_chunks_item ON memory_chunks(memory_item_id)"#,
         r#"
@@ -248,7 +278,13 @@ fn sanitize_filename(path_text: &str) -> String {
         .unwrap_or("document.md");
     candidate
         .chars()
-        .map(|ch| if ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.') { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -258,7 +294,10 @@ fn event_type_from_payload(payload: &IngestEventRequest, content: Option<&str>) 
     }
     if let Some(path) = &payload.file_path {
         if PathBuf::from(path).extension().and_then(|ext| ext.to_str()) == Some("md") {
-            return if content.map(|text| text.contains("status: ready")).unwrap_or(false) {
+            return if content
+                .map(|text| text.contains("status: ready"))
+                .unwrap_or(false)
+            {
                 "proposal_ready".to_string()
             } else {
                 "repo_handoff".to_string()
@@ -269,10 +308,7 @@ fn event_type_from_payload(payload: &IngestEventRequest, content: Option<&str>) 
 }
 
 fn inferred_scope(payload: &IngestEventRequest) -> String {
-    payload
-        .scope
-        .clone()
-        .unwrap_or_else(|| "repo".to_string())
+    payload.scope.clone().unwrap_or_else(|| "repo".to_string())
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -289,16 +325,26 @@ async fn ingest_event(
     Json(payload): Json<IngestEventRequest>,
 ) -> Result<(StatusCode, Json<SimpleResponse>), (StatusCode, String)> {
     let event_id = payload
-        .id
+        .event_id
         .clone()
+        .or_else(|| payload.id.clone())
         .unwrap_or_else(|| format!("evt_{}", Uuid::new_v4().simple()));
-    let created_at = payload.created_at.clone().unwrap_or_else(utc_now);
+    let created_at = payload
+        .occurred_at
+        .clone()
+        .or_else(|| payload.created_at.clone())
+        .unwrap_or_else(utc_now);
     let content = payload.content.clone();
     let event_type = event_type_from_payload(&payload, content.as_deref());
     let scope = inferred_scope(&payload);
     let content_hash = payload.content_hash.clone().unwrap_or_else(|| {
         let mut hasher = Sha256::new();
-        hasher.update(content.as_deref().unwrap_or(payload.file_path.as_deref().unwrap_or(&event_id)).as_bytes());
+        hasher.update(
+            content
+                .as_deref()
+                .unwrap_or(payload.file_path.as_deref().unwrap_or(&event_id))
+                .as_bytes(),
+        );
         hex::encode(hasher.finalize())
     });
     let content_len = content.as_ref().map(|text| text.len()).unwrap_or(0);
@@ -343,7 +389,9 @@ async fn ingest_event(
     }
 
     let raw_payload_path_text = raw_payload_path.display().to_string();
-    let raw_markdown_path_text = raw_markdown_path.as_ref().map(|path| path.display().to_string());
+    let raw_markdown_path_text = raw_markdown_path
+        .as_ref()
+        .map(|path| path.display().to_string());
 
     let mut tx = state
         .pool
@@ -391,7 +439,10 @@ async fn ingest_event(
     if ingest_rows.len() != 1 {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("unexpected ingest row count for event_id={event_id}: {}", ingest_rows.len()),
+            format!(
+                "unexpected ingest row count for event_id={event_id}: {}",
+                ingest_rows.len()
+            ),
         ));
     }
 
@@ -457,7 +508,38 @@ async fn ingest_event(
     ))
 }
 
-async fn list_events(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResponse<IngestEventRecord>>, (StatusCode, String)> {
+async fn ingest_event_batch(
+    State(state): State<Arc<AppState>>,
+    Json(batch): Json<BatchIngestRequest>,
+) -> Result<(StatusCode, Json<BatchIngestResponse>), (StatusCode, String)> {
+    let mut accepted = Vec::new();
+    let mut rejected = Vec::new();
+
+    for (index, event) in batch.events.into_iter().enumerate() {
+        match ingest_event(State(Arc::clone(&state)), Json(event)).await {
+            Ok((_status, Json(response))) => accepted.push(response),
+            Err((status, error)) => rejected.push(BatchRejectedEvent {
+                index,
+                status: status.as_u16(),
+                error,
+            }),
+        }
+    }
+
+    let status = if rejected.is_empty() {
+        StatusCode::ACCEPTED
+    } else if accepted.is_empty() {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::MULTI_STATUS
+    };
+
+    Ok((status, Json(BatchIngestResponse { accepted, rejected })))
+}
+
+async fn list_events(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<IngestEventRecord>>, (StatusCode, String)> {
     let items = sqlx::query_as::<_, IngestEventRecord>(
         r#"SELECT * FROM ingest_events ORDER BY created_at DESC"#,
     )
@@ -468,7 +550,9 @@ async fn list_events(State(state): State<Arc<AppState>>) -> Result<Json<ItemsRes
     Ok(Json(ItemsResponse { items }))
 }
 
-async fn list_items(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResponse<MemoryItemRecord>>, (StatusCode, String)> {
+async fn list_items(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<MemoryItemRecord>>, (StatusCode, String)> {
     let items = sqlx::query_as::<_, MemoryItemRecord>(
         r#"SELECT * FROM memory_items ORDER BY updated_at DESC"#,
     )
@@ -479,7 +563,9 @@ async fn list_items(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResp
     Ok(Json(ItemsResponse { items }))
 }
 
-async fn list_chunks(State(state): State<Arc<AppState>>) -> Result<Json<ItemsResponse<MemoryChunkRecord>>, (StatusCode, String)> {
+async fn list_chunks(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<MemoryChunkRecord>>, (StatusCode, String)> {
     let items = sqlx::query_as::<_, MemoryChunkRecord>(
         r#"
         SELECT
@@ -520,7 +606,9 @@ async fn main() {
 
     let bind = env::var("MEMORY_API_BIND").unwrap_or_else(|_| "0.0.0.0:8081".into());
     let data_dir = PathBuf::from(env::var("MEMORY_DATA_DIR").unwrap_or_else(|_| "/data".into()));
-    let raw_dir = PathBuf::from(env::var("MEMORY_RAW_DIR").unwrap_or_else(|_| data_dir.join("raw").display().to_string()));
+    let raw_dir = PathBuf::from(
+        env::var("MEMORY_RAW_DIR").unwrap_or_else(|_| data_dir.join("raw").display().to_string()),
+    );
     let database_url = env::var("MEMORY_DATABASE_URL")
         .unwrap_or_else(|_| panic!("MEMORY_DATABASE_URL is required"));
     let sanitized_database_url = if let Some((prefix, _)) = database_url.rsplit_once('@') {
@@ -563,7 +651,11 @@ async fn main() {
 
     let app = Router::new()
         .route("/healthz", get(health))
+        .route("/events", post(ingest_event).get(list_events))
+        .route("/events/batch", post(ingest_event_batch))
+        .route("/memory", get(list_items))
         .route("/v1/events", post(ingest_event).get(list_events))
+        .route("/v1/events/batch", post(ingest_event_batch))
         .route("/v1/items", get(list_items))
         .route("/v1/chunks", get(list_chunks))
         .with_state(state);
