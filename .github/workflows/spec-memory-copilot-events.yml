@@ -1,0 +1,27 @@
+name: Spec Memory Copilot Events
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, closed]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  check_suite:
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+env:
+  MEMORY_INGEST_API_URL: ${{ secrets.MEMORY_INGEST_API_URL || 'http://127.0.0.1:8080/api/v1/events' }}
+
+jobs:
+  capture:
+    name: Capture Spec Memory event
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Emit Spec Memory event
+        run: python3 scripts/copilot_event_capture.py --ignore-errors

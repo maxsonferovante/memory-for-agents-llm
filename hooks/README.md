@@ -44,3 +44,8 @@ The poster infers Spec Kit event types such as `spec.updated`, `plan.created`, `
 - proposal validation;
 - stop-time session event capture;
 - ready proposal promotion.
+
+
+## GitHub Copilot and GitHub Actions wiring
+
+`.github/copilot-instructions.md`, `.github/instructions/`, `.github/prompts/`, `.github/agents/`, and `.github/skills/` provide Copilot adapter guidance for the Spec Memory Platform. `.github/workflows/spec-memory-copilot-events.yml` runs `scripts/copilot_event_capture.py` on pull request, pull request review, and check-suite events so Copilot-assisted work can be represented as structured Spec Memory events.
