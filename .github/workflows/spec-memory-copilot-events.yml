@@ -1,6 +1,11 @@
 name: Spec Memory Copilot Events
 
 on:
+  push:
+    branches:
+      - main
+      - master
+      - "feature/**"
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, closed]
   pull_request_review:

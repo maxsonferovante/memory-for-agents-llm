@@ -35,6 +35,17 @@ py -3 scripts/install_claude_assets.py --stack-host 127.0.0.1               # Wi
 
 The script discovers `~/.claude` automatically or uses `CLAUDE_CONFIG_DIR` when present. Use `--force` only when you intentionally want to overwrite differing local files. Pass `--stack-host` every time so the hook and MCP URLs point at the right proxy.
 
+If you want to project the same Spec Memory Platform adapter layer into another repository for GitHub Copilot, run:
+
+```bash
+python3 scripts/install_copilot_assets.py --dry-run --target-repo /path/to/repo --stack-host 127.0.0.1  # macOS/Linux
+py -3 scripts/install_copilot_assets.py --dry-run --target-repo C:\path\to\repo --stack-host 127.0.0.1   # Windows
+python3 scripts/install_copilot_assets.py --target-repo /path/to/repo --stack-host 127.0.0.1             # macOS/Linux
+py -3 scripts/install_copilot_assets.py --target-repo C:\path\to\repo --stack-host 127.0.0.1              # Windows
+```
+
+The Copilot installer writes `.github/` instructions, prompts, agents, skills, the Spec Memory event workflow, and `scripts/copilot_event_capture.py` into the target repository so GitHub Actions can emit shared Spec Memory events without manual file copying.
+
 ## Local stack flow
 
 To run the local memory stack end to end:

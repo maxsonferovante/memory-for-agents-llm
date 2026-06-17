@@ -19,6 +19,10 @@ COPILOT_ASSET_PATHS = (
     Path("workflows/spec-memory-copilot-events.yml"),
 )
 
+COPILOT_REPO_ASSET_PATHS = (
+    Path("scripts/copilot_event_capture.py"),
+)
+
 
 def discover_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -108,6 +112,8 @@ def copy_tree(source_root: Path, target_root: Path, force: bool, dry_run: bool) 
 def install_assets(
     source_github: Path,
     target_github: Path,
+    source_repo: Path,
+    target_repo: Path,
     force: bool,
     dry_run: bool,
     ingest_url: str | None,
@@ -134,6 +140,13 @@ def install_assets(
             )
         else:
             actions.append(copy_file(source, target, force=force, dry_run=dry_run))
+    for relative in COPILOT_REPO_ASSET_PATHS:
+        source = source_repo / relative
+        target = target_repo / relative
+        if not source.exists():
+            actions.append(f"missing source {source}")
+            continue
+        actions.append(copy_file(source, target, force=force, dry_run=dry_run))
     return actions
 
 
@@ -183,6 +196,8 @@ def main() -> int:
     actions = install_assets(
         source_github=source_github,
         target_github=target_github,
+        source_repo=source_repo,
+        target_repo=target_repo,
         force=args.force,
         dry_run=args.dry_run,
         ingest_url=ingest_url,
