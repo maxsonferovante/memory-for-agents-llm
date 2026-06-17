@@ -44,7 +44,7 @@ python3 scripts/install_copilot_assets.py --target-repo /path/to/repo --stack-ho
 py -3 scripts/install_copilot_assets.py --target-repo C:\path\to\repo --stack-host 127.0.0.1              # Windows
 ```
 
-The Copilot installer writes `.github/` instructions, prompts, agents, skills, `.github/hooks/`, the Spec Memory event workflow, and `scripts/copilot_event_capture.py` plus `scripts/copilot_hook_capture.py` into the target repository so both Copilot cloud-agent sessions and GitHub Actions can emit shared Spec Memory events without manual file copying.
+The Copilot installer writes `.github/` instructions, prompts, agents, skills, `.github/hooks/`, the Spec Memory event workflow, `scripts/copilot_event_capture.py`, `scripts/copilot_hook_capture.py`, and `.vscode/mcp.json` into the target repository so both Copilot and GitHub Actions can reach the same `localMemory` MCP server without manual file copying.
 
 ## Local stack flow
 

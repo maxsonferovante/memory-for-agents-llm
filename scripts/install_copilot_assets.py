@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -24,6 +25,8 @@ COPILOT_REPO_ASSET_PATHS = (
     Path("scripts/copilot_event_capture.py"),
     Path("scripts/copilot_hook_capture.py"),
 )
+
+VSCODE_MCP_CONFIG_PATH = Path(".vscode/mcp.json")
 
 
 def discover_repo_root() -> Path:
@@ -111,6 +114,48 @@ def copy_tree(source_root: Path, target_root: Path, force: bool, dry_run: bool) 
     return actions
 
 
+def read_json(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"invalid JSON in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"{path} must contain a JSON object")
+    return data
+
+
+def write_json(path: Path, data: dict[str, object], dry_run: bool) -> None:
+    if dry_run:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def merge_vscode_mcp_config(path: Path, mcp_url: str, dry_run: bool) -> str:
+    config = read_json(path)
+    servers = config.setdefault("servers", {})
+    if not isinstance(servers, dict):
+        raise SystemExit(f"{path} field 'servers' must be an object")
+    inputs = config.setdefault("inputs", [])
+    if not isinstance(inputs, list):
+        raise SystemExit(f"{path} field 'inputs' must be an array")
+
+    desired = {
+        "type": "http",
+        "url": mcp_url,
+    }
+    existing = servers.get("localMemory")
+    if existing == desired:
+        return f"unchanged {path}"
+
+    servers["localMemory"] = desired
+    action = "update" if path.exists() else "create"
+    write_json(path, config, dry_run=dry_run)
+    return f"{'would ' if dry_run else ''}{action} {path}"
+
+
 def install_assets(
     source_github: Path,
     target_github: Path,
@@ -119,6 +164,7 @@ def install_assets(
     force: bool,
     dry_run: bool,
     ingest_url: str | None,
+    mcp_url: str | None,
 ) -> list[str]:
     actions: list[str] = []
     for relative in COPILOT_ASSET_PATHS:
@@ -149,6 +195,8 @@ def install_assets(
             actions.append(f"missing source {source}")
             continue
         actions.append(copy_file(source, target, force=force, dry_run=dry_run))
+    if mcp_url:
+        actions.append(merge_vscode_mcp_config(target_repo / VSCODE_MCP_CONFIG_PATH, mcp_url, dry_run))
     return actions
 
 
@@ -191,6 +239,7 @@ def main() -> int:
     source_github = source_repo / ".github"
     target_github = target_repo / ".github"
     ingest_url = build_stack_urls(args.stack_host).ingest_url if args.stack_host else None
+    mcp_url = build_stack_urls(args.stack_host).mcp_url if args.stack_host else None
 
     if not source_github.exists():
         raise SystemExit(f"source .github directory does not exist: {source_github}")
@@ -203,6 +252,7 @@ def main() -> int:
         force=args.force,
         dry_run=args.dry_run,
         ingest_url=ingest_url,
+        mcp_url=mcp_url,
     )
 
     print(f"Detected OS: {platform.system() or os.name}")
@@ -211,6 +261,8 @@ def main() -> int:
     print(f"Target .github directory: {target_github}")
     if ingest_url:
         print(f"Rendered workflow fallback ingest URL: {ingest_url}")
+    if mcp_url:
+        print(f"Rendered VS Code MCP URL: {mcp_url}")
     for action in actions:
         print(action)
     return 0
