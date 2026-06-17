@@ -110,6 +110,240 @@ Claude source definitions live in `runtime_sources/claude/subagents/*.md` and ar
 - `local_stack/mcp-server/` exposes search and resource reads over the official Rust MCP SDK.
 - `docker-compose.yml` wires the services together around a shared `/data` volume and a local PostgreSQL metadata store.
 
+## Data transformation pipeline
+
+The local stack does not index raw events directly for search. It first converts them into a staged data model with three distinct layers:
+
+- `ingest_events`: the immutable intake log. This preserves the original event envelope, key metadata, the resolved `content_hash`, and filesystem pointers to the raw files written under `/data/raw`.
+- `memory_items`: the document-level projection. One event becomes one normalized memory record with stable metadata such as `repo`, `scope`, `kind`, `title`, `summary`, `status`, `source_file`, and serialized provenance.
+- `memory_chunks`: the retrieval-level projection. A single `memory_item` is split into many smaller units optimized for search, ranking, and embedding similarity.
+
+That separation is intentional:
+
+- the API is optimized for durable intake
+- the worker is optimized for transformation
+- the MCP layer is optimized for retrieval
+
+### Step 1: intake and raw persistence
+
+The transformation starts when a hook, Copilot adapter, Codex hook, Claude hook, or GitHub workflow submits an event to `POST /api/v1/events`.
+
+At ingest time, the Rust API:
+
+- resolves `event_id`, `event_type`, `scope`, and `created_at`
+- computes `content_hash` if the producer did not provide one
+- creates `/data/raw/<repo>/<event-id>/`
+- writes the normalized JSON envelope to `payload.json`
+- writes Markdown content to a sanitized filename when `content` exists
+
+This means the system preserves both:
+
+- the structured transport payload
+- the text body that will later be transformed into memory
+
+The API then writes:
+
+- one row to `ingest_events`
+- one row to `job_queue`
+
+At this point the event is durable, but not yet searchable.
+
+### Step 2: queue handoff to the worker
+
+The worker is a separate async process. It continuously polls `job_queue`, claims the oldest pending runnable job, marks it as `processing`, and loads the matching event from `ingest_events`.
+
+This queue boundary is important because it decouples:
+
+- event capture latency
+- indexing latency
+- future retries on failed transformations
+
+So the API can stay fast and append-only, while the worker can do heavier parsing and projection work.
+
+### Step 3: reconstruct the text body to transform
+
+The worker does not assume that the producer always sent the text in the same field. It reconstructs the best available source in this order:
+
+1. `event.content`
+2. `raw_markdown_path`
+3. `raw_payload_path`
+
+If no Markdown-like body can be reconstructed, the worker skips memory derivation and only marks the event as processed. This is how the pipeline avoids generating low-quality vectors from empty or purely structural events.
+
+### Step 4: derive the document-level memory item
+
+Once the worker has text, it builds the document projection.
+
+The worker:
+
+- parses frontmatter when the content starts with a YAML header
+- separates frontmatter from body
+- derives a title from frontmatter, event fields, or the first H1 heading
+- derives a summary from the first sentence or first meaningful body excerpt
+- infers `kind` from file path and event type
+- infers `status` from event type, for example `canonical` for promoted or canonical sync events and `proposal` otherwise
+- carries forward provenance such as `source`, `session_id`, `event_type`, `branch`, `created_at`, and `file_path`
+
+This becomes one row in `memory_items`.
+
+In practice, `memory_items` is the human-readable, document-shaped representation of the event after normalization. It is where the system decides what the event *means* as memory, not just what bytes arrived.
+
+### Step 5: derive sections from Markdown structure
+
+The worker then converts the body into retrieval-oriented structure.
+
+It uses heading-aware parsing:
+
+- Markdown headings `#` through `######` are interpreted as section boundaries
+- nested headings become a `heading_path`
+- each section retains only the text content that belongs to that heading subtree
+
+If no headings exist, the whole document falls back to a single logical section named `document`.
+
+This step matters because the system does not embed the entire Markdown file as one monolithic vector. It preserves some document hierarchy before chunking.
+
+### Step 6: split sections into bounded chunks
+
+For each derived section, the worker runs a chunker with a maximum character budget.
+
+The chunker:
+
+- normalizes excessive blank lines
+- splits primarily on paragraph boundaries
+- merges adjacent paragraphs while the chunk stays under the limit
+- falls back to raw slicing only when one paragraph alone exceeds the maximum
+
+The result is a list of compact text fragments that are much better suited for retrieval than the original full document.
+
+Each chunk receives:
+
+- `memory_item_id`
+- `repo`
+- `scope`
+- `kind`
+- `heading_path`
+- `chunk_index`
+- `chunk_text`
+- `token_count`
+- `source_file`
+- serialized provenance
+
+This is the real transformation boundary where one event becomes many retrieval units.
+
+### Step 7: generate vectors
+
+For every chunk, the worker computes an embedding and stores it in `memory_chunks.embedding`.
+
+Today the embedding is deterministic and local:
+
+- tokenize text into normalized words
+- hash each word with SHA-256
+- map each word into one of 48 dimensions
+- apply a signed weighted accumulation
+- L2-normalize the final vector
+
+This is not meant to be a high-quality semantic model forever. It is a cheap local embedding strategy that preserves the full storage contract:
+
+- one vector per chunk
+- fixed dimensionality
+- cosine-similarity-friendly normalization
+- compatibility with `pgvector`
+
+That lets the retrieval system work now without requiring an external embedding service.
+
+### Step 8: replace the retrieval projection
+
+After chunk generation, the worker replaces all existing chunks for the current `memory_item_id`.
+
+The replacement strategy is:
+
+- delete old `memory_chunks` rows for the item
+- insert the new chunk set
+
+This means the chunk projection is treated as a rebuildable derivative, not as the source of truth. The stable source remains:
+
+- the canonical Markdown in the repo
+- the raw ingest payload under `/data/raw`
+- the normalized memory item metadata in `memory_items`
+
+### Step 9: finalize processing state
+
+When transformation succeeds:
+
+- `job_queue.status` becomes `done`
+- `ingest_events.status` becomes `processed`
+- `processed_at` is set
+- `error` is cleared
+
+When transformation fails:
+
+- `job_queue.status` becomes `failed`
+- `ingest_events.status` becomes `failed`
+- the error text is persisted
+
+This gives the stack a basic replay and debugging surface without losing the raw evidence.
+
+## Vector and database layout
+
+The PostgreSQL schema separates intake, transformation control, document projection, and vector projection:
+
+- `ingest_events`
+  - one row per accepted event
+  - stores transport metadata and raw file pointers
+  - acts as the append-only intake ledger
+- `job_queue`
+  - one row per event scheduled for transformation
+  - tracks pending, processing, done, and failed states
+  - is the coordination point between API and worker
+- `memory_items`
+  - one row per derived memory object
+  - stores the normalized semantic identity of the event as memory
+  - is the document-level projection consumed by listing and item reads
+- `memory_chunks`
+  - many rows per memory item
+  - stores retrieval fragments and vectors
+  - is the query surface for semantic similarity and chunk-level recall
+
+### Important columns
+
+- `ingest_events.raw_payload_path`: where the preserved JSON envelope lives on disk
+- `ingest_events.raw_markdown_path`: where the preserved Markdown body lives on disk
+- `memory_items.provenance_json`: serialized source and lineage metadata
+- `memory_chunks.heading_path`: structural position of the chunk inside the document
+- `memory_chunks.embedding`: `vector(48)` value used for similarity search
+- `memory_chunks.token_count`: cheap size hint for retrieval and budgeting
+
+### Vector storage
+
+Vector storage lives in `memory_chunks.embedding` as `vector(48)` via `pgvector`. The schema also creates an `ivfflat` cosine index so similarity search can scale beyond sequential scans.
+
+The current worker does not call an external embedding model. Instead, it uses a deterministic hashed embedding from the chunk text:
+
+- tokenize text into normalized words
+- hash each word with SHA-256
+- map each word into one of 48 dimensions
+- accumulate signed weighted values per dimension
+- normalize the final vector to unit length
+
+This keeps the pipeline local, reproducible, and cheap. It is intentionally a placeholder embedding strategy, but the storage contract is already the same shape expected by a stronger embedding backend later.
+
+### Why the worker exists
+
+The worker's main transformation responsibility is not just "save Markdown". It converts one raw event into:
+
+- one canonical memory item for metadata and provenance
+- zero or more derived sections
+- many retrieval chunks for semantic search
+- one vector per chunk for similarity queries
+
+That is why the save path is split between the API and the worker:
+
+- the API is responsible for durable intake
+- the worker is responsible for semantic transformation
+- the MCP server is responsible for read-time access
+
+In other words, the worker is the projection engine of the local memory stack.
+
 ### Useful commands
 
 - `python3 scripts/install_claude_assets.py --dry-run --stack-host 127.0.0.1`

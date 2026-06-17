@@ -236,6 +236,543 @@ sequenceDiagram
 - os chunks recebem embeddings vetoriais
 - o MCP server lê diretamente do banco
 
+## Transformação de dados no stack local
+
+Esta é a parte mais importante do pipeline técnico: o sistema não faz busca em cima do evento bruto. Ele transforma o evento em projeções próprias para memória e recuperação.
+
+### Visão das camadas
+
+O mesmo evento percorre quatro superfícies de dados:
+
+1. `ingest_events`
+2. `job_queue`
+3. `memory_items`
+4. `memory_chunks`
+
+Cada uma existe por um motivo diferente:
+
+- `ingest_events` preserva a entrada original e sua proveniência
+- `job_queue` controla o processamento assíncrono
+- `memory_items` representa a memória em nível de documento
+- `memory_chunks` representa a memória em nível de recuperação semântica
+
+### Etapa 1: recepção do evento
+
+Um hook, workflow ou adapter envia um `POST /api/v1/events`.
+
+A API em Rust recebe um envelope com campos como:
+
+- `event_id`
+- `event_type`
+- `repo`
+- `branch`
+- `commit_sha`
+- `file_path`
+- `scope`
+- `source`
+- `session_id`
+- `content`
+
+Se `content_hash` não vier pronto, a API calcula um SHA-256 a partir do conteúdo ou, na falta dele, do `file_path` ou do próprio `event_id`.
+
+### Etapa 2: persistência bruta em disco
+
+Antes de pensar em chunk, embedding ou item de memória, a API preserva a evidência bruta em `/data/raw/<repo>/<event-id>/`.
+
+Ela grava:
+
+- `payload.json`: o envelope estruturado recebido
+- um arquivo Markdown com nome sanitizado, quando `content` existe
+
+Essa decisão é importante porque mantém:
+
+- rastreabilidade do que realmente chegou
+- possibilidade de replay futuro
+- separação entre intake bruto e projeção derivada
+
+### Etapa 3: escrita no banco de intake
+
+Depois da persistência bruta, a API cria:
+
+- uma linha em `ingest_events`
+- uma linha correspondente em `job_queue`
+
+#### Papel de `ingest_events`
+
+`ingest_events` é o log append-only de entrada. Ele guarda:
+
+- identidade do evento
+- tipo do evento
+- repositório, branch e commit
+- escopo
+- origem
+- referência para os arquivos brutos
+- corpo original, quando disponível
+- estado de processamento
+
+#### Papel de `job_queue`
+
+`job_queue` é a tabela de coordenação. Ela não guarda semântica do documento; ela guarda estado operacional do worker:
+
+- `pending`
+- `processing`
+- `done`
+- `failed`
+
+Isso desacopla:
+
+- tempo de ingestão
+- tempo de transformação
+- estratégia de retry e observabilidade
+
+### Etapa 4: claim do job pelo worker
+
+O worker Python roda em loop.
+
+Ele:
+
+1. procura o próximo job `pending`
+2. ignora jobs agendados para o futuro
+3. usa lock para evitar processamento duplicado concorrente
+4. marca o job como `processing`
+5. carrega o evento correspondente de `ingest_events`
+
+Aqui começa a transformação propriamente dita.
+
+### Etapa 5: reconstrução do texto-base
+
+O worker tenta descobrir qual texto deve ser transformado em memória.
+
+A ordem de preferência é:
+
+1. `event.content`
+2. conteúdo do arquivo em `raw_markdown_path`
+3. fallback para `content` dentro do JSON em `raw_payload_path`
+
+Se nada disso produzir texto útil, o worker não inventa memória. Ele apenas encerra o processamento sem gerar projeção derivada.
+
+### Etapa 6: derivação do item de memória
+
+Com texto válido em mãos, o worker constrói um `memory_item`.
+
+Ele executa estas transformações:
+
+- parse de frontmatter YAML, quando existe
+- separação entre metadados e corpo
+- derivação de título
+- derivação de resumo curto
+- inferência de `kind`
+- inferência de `status`
+- montagem da proveniência
+
+#### Como o título é derivado
+
+O título segue uma cadeia de fallback:
+
+- `frontmatter.title`
+- campo `title` do evento, se existir
+- primeiro heading H1 do Markdown
+- nome de arquivo como último recurso
+
+#### Como o resumo é derivado
+
+O resumo vem da primeira frase útil do corpo ou do início do conteúdo renderizado como excerpt curto.
+
+#### Como o `kind` é inferido
+
+O worker olha principalmente para `file_path` e `event_type`.
+
+Exemplos:
+
+- `knowledge/specs/...` -> `spec`
+- `knowledge/adr/...` -> `adr`
+- `knowledge/runbooks/...` -> `runbook`
+- `knowledge/glossary/...` -> `glossary`
+- eventos genéricos podem cair em `lesson` ou `context_pack`
+
+#### Como o `status` é inferido
+
+Hoje o pipeline usa uma regra simples:
+
+- eventos como `memory_promoted` e `canonical_sync` viram `canonical`
+- os demais tendem a virar `proposal`
+
+O resultado final é uma linha em `memory_items`.
+
+### Etapa 7: leitura estrutural do Markdown
+
+Depois do item de memória, o worker faz a leitura estrutural do corpo.
+
+Ele interpreta headings Markdown como limites semânticos:
+
+- `#`
+- `##`
+- `###`
+- até `######`
+
+Cada seção recebe um `heading_path`, por exemplo:
+
+- `document`
+- `Arquitetura`
+- `Arquitetura > Worker`
+- `Arquitetura > Worker > Chunking`
+
+Se o texto não tiver headings, o documento inteiro vira uma única seção `document`.
+
+### Etapa 8: chunking
+
+Cada seção é dividida em chunks menores.
+
+O algoritmo:
+
+- normaliza quebras excessivas
+- separa por parágrafos
+- junta parágrafos enquanto o limite de caracteres permite
+- corta um parágrafo bruto apenas quando ele sozinho excede o limite
+
+Isso evita dois extremos ruins:
+
+- chunk gigante demais para recuperação
+- chunk pequeno demais sem contexto suficiente
+
+Cada chunk recebe:
+
+- `id`
+- `memory_item_id`
+- `repo`
+- `scope`
+- `kind`
+- `heading_path`
+- `chunk_index`
+- `chunk_text`
+- `token_count`
+- `source_file`
+- `provenance_json`
+
+### Etapa 9: geração do vetor
+
+Cada chunk recebe um embedding em `memory_chunks.embedding`.
+
+Hoje esse embedding é local e determinístico. O processo é:
+
+1. tokenizar palavras do texto
+2. normalizar para lowercase
+3. hashear cada palavra com SHA-256
+4. escolher uma entre 48 dimensões por palavra
+5. acumular contribuição com sinal e peso
+6. normalizar o vetor final
+
+Isso produz um `vector(48)` compatível com `pgvector`.
+
+Não é o embedding semântico final desejável para sempre, mas já resolve três coisas importantes:
+
+- previsibilidade
+- custo zero de chamada externa
+- contrato estável de armazenamento vetorial
+
+### Etapa 10: gravação da projeção de recuperação
+
+Quando os chunks estão prontos, o worker substitui completamente a projeção antiga daquele item:
+
+1. apaga os `memory_chunks` anteriores do `memory_item_id`
+2. insere os chunks recém-gerados
+
+Isso mostra uma decisão arquitetural importante:
+
+- `memory_chunks` é uma projeção reconstruível
+- não é a fonte primária da verdade
+
+A fonte de verdade continua sendo:
+
+- Markdown canônico no Git
+- payload bruto em `/data/raw`
+- metadados persistidos em `ingest_events`
+
+### Etapa 11: fechamento do processamento
+
+Se tudo der certo:
+
+- `job_queue.status = done`
+- `ingest_events.status = processed`
+- `processed_at` é preenchido
+- `error` é limpo
+
+Se algo falhar:
+
+- `job_queue.status = failed`
+- `ingest_events.status = failed`
+- a mensagem de erro é persistida
+
+Isso permite:
+
+- inspecionar falhas
+- saber quais eventos nunca viraram memória indexada
+- futuramente implementar replay controlado
+
+## Organização dos dados no PostgreSQL
+
+### Diagrama das tabelas e relações
+
+```mermaid
+erDiagram
+  ingest_events ||--o| job_queue : "event_id"
+  ingest_events ||--o| memory_items : "event_id"
+  memory_items ||--o{ memory_chunks : "memory_item_id"
+
+  ingest_events {
+    text id PK
+    text event_type
+    text repo
+    text branch
+    text commit_sha
+    text file_path
+    text scope
+    text source
+    text session_id
+    text created_at
+    text content_hash
+    text raw_payload_path
+    text raw_markdown_path
+    text content
+    text status
+    text processed_at
+    text error
+  }
+
+  job_queue {
+    text id PK
+    text event_id FK
+    text status
+    int attempts
+    text next_run_at
+    text last_error
+    text created_at
+    text updated_at
+  }
+
+  memory_items {
+    text id PK
+    text event_id FK
+    text repo
+    text scope
+    text kind
+    text title
+    text summary
+    text source_file
+    text commit_sha
+    text content_hash
+    text status
+    text supersedes_id
+    text provenance_json
+    text created_at
+    text updated_at
+  }
+
+  memory_chunks {
+    text id PK
+    text memory_item_id FK
+    text repo
+    text scope
+    text kind
+    text heading_path
+    int chunk_index
+    text chunk_text
+    vector_embedding embedding
+    int token_count
+    text source_file
+    text provenance_json
+    text created_at
+  }
+```
+
+### Leitura das relações
+
+- `ingest_events -> job_queue`:
+  cada evento aceito pela API gera um job correspondente de transformação. A relação é lógica de 1 para 1, embora esteja modelada por FK simples.
+- `ingest_events -> memory_items`:
+  um evento processável pode gerar um único item de memória normalizado.
+- `memory_items -> memory_chunks`:
+  um item de memória pode gerar muitos chunks, porque a recuperação é feita em granularidade menor que o documento.
+
+### Visão operacional rápida
+
+- `ingest_events`:
+  tabela de intake e auditoria.
+- `job_queue`:
+  tabela de coordenação do worker.
+- `memory_items`:
+  projeção semântica em nível de documento.
+- `memory_chunks`:
+  projeção vetorial em nível de busca.
+
+### `ingest_events`
+
+É a tabela de entrada. Guarda:
+
+- envelope do evento
+- ponteiros para os arquivos brutos
+- hash do conteúdo
+- estado do processamento
+
+Ela responde à pergunta:
+
+> o que exatamente entrou no sistema?
+
+#### Campos
+
+| Campo | Tipo lógico | Uso |
+| --- | --- | --- |
+| `id` | texto | identificador primário do evento |
+| `event_type` | texto | categoria do evento recebido |
+| `repo` | texto | repositório ao qual o evento pertence |
+| `branch` | texto opcional | branch associada ao evento |
+| `commit_sha` | texto opcional | commit relacionado |
+| `file_path` | texto opcional | arquivo principal associado ao evento |
+| `scope` | texto opcional | escopo semântico, como `repo`, `product`, `org` |
+| `source` | texto opcional | origem do produtor, por exemplo hook, workflow ou adapter |
+| `session_id` | texto opcional | sessão que originou o evento |
+| `created_at` | texto | timestamp lógico do evento |
+| `content_hash` | texto | hash usado para deduplicação e rastreio |
+| `raw_payload_path` | texto | caminho do `payload.json` bruto em disco |
+| `raw_markdown_path` | texto opcional | caminho do markdown bruto preservado |
+| `content` | texto opcional | corpo textual já normalizado no momento do intake |
+| `status` | texto | estado do processamento, como `pending`, `processed` ou `failed` |
+| `processed_at` | texto opcional | timestamp de fechamento do processamento |
+| `error` | texto opcional | erro persistido quando a transformação falha |
+
+### `job_queue`
+
+É a tabela de orquestração do worker.
+
+Ela responde à pergunta:
+
+> esse evento já foi transformado, está em processamento ou falhou?
+
+#### Campos
+
+| Campo | Tipo lógico | Uso |
+| --- | --- | --- |
+| `id` | texto | identificador do job; no fluxo atual coincide com o `event_id` |
+| `event_id` | texto FK | aponta para `ingest_events.id` |
+| `status` | texto | estado operacional do job |
+| `attempts` | inteiro | número de tentativas de processamento |
+| `next_run_at` | texto | instante mínimo para nova execução |
+| `last_error` | texto opcional | último erro observado no worker |
+| `created_at` | texto | criação do job |
+| `updated_at` | texto | última atualização de estado |
+
+### `memory_items`
+
+É a projeção em nível de documento.
+
+Cada linha representa uma memória já normalizada, com:
+
+- título
+- resumo
+- tipo
+- escopo
+- origem
+- status
+
+Ela responde à pergunta:
+
+> qual é o objeto de memória que esse evento gerou?
+
+#### Campos
+
+| Campo | Tipo lógico | Uso |
+| --- | --- | --- |
+| `id` | texto | identificador primário do item de memória |
+| `event_id` | texto FK único | aponta para `ingest_events.id`; garante no máximo um item por evento |
+| `repo` | texto | repositório da memória derivada |
+| `scope` | texto | escopo final da memória |
+| `kind` | texto | tipo semântico, como `spec`, `adr`, `lesson`, `runbook` |
+| `title` | texto | título normalizado do documento |
+| `summary` | texto | resumo curto para listagem e leitura |
+| `source_file` | texto | arquivo de origem associado |
+| `commit_sha` | texto opcional | commit relacionado |
+| `content_hash` | texto | hash do conteúdo que originou a projeção |
+| `status` | texto | estado semântico, como `proposal` ou `canonical` |
+| `supersedes_id` | texto opcional | referência lógica para item supersedido |
+| `provenance_json` | JSON serializado | origem, sessão, branch e demais metadados de linhagem |
+| `created_at` | texto | criação do item |
+| `updated_at` | texto | última atualização do item |
+
+### `memory_chunks`
+
+É a projeção em nível de busca.
+
+Cada linha representa um fragmento do documento com:
+
+- texto do chunk
+- caminho estrutural da seção
+- índice do chunk
+- contagem aproximada de tokens
+- embedding vetorial
+
+Ela responde à pergunta:
+
+> quais pedaços desse documento podem ser recuperados por busca semântica?
+
+#### Campos
+
+| Campo | Tipo lógico | Uso |
+| --- | --- | --- |
+| `id` | texto | identificador primário do chunk |
+| `memory_item_id` | texto FK | aponta para `memory_items.id` |
+| `repo` | texto | redundância útil para filtro de busca |
+| `scope` | texto | escopo herdado do item |
+| `kind` | texto | tipo semântico herdado do item |
+| `heading_path` | texto | caminho estrutural da seção no Markdown |
+| `chunk_index` | inteiro | ordem do chunk dentro do item |
+| `chunk_text` | texto | texto efetivamente consultado e embeddado |
+| `embedding` | `vector(48)` | vetor usado em similaridade |
+| `token_count` | inteiro | estimativa simples de tamanho do chunk |
+| `source_file` | texto | arquivo de origem do chunk |
+| `provenance_json` | JSON serializado | proveniência replicada no nível do chunk |
+| `created_at` | texto | timestamp de criação do chunk |
+
+### Índices relevantes
+
+- `idx_job_queue_status_next_run`:
+  acelera o polling do worker por jobs pendentes.
+- `idx_memory_items_repo_scope`:
+  acelera leitura filtrada por repositório e escopo.
+- `idx_memory_chunks_item`:
+  acelera leitura dos chunks de um item específico.
+- `idx_memory_chunks_embedding_cosine`:
+  acelera busca vetorial por similaridade com `ivfflat`.
+
+## Papel específico do worker
+
+O worker não é um simples "salvador de arquivo".
+
+Ele é o componente que converte intake bruto em estrutura recuperável.
+
+Em termos práticos, ele transforma:
+
+- um evento
+
+em:
+
+- um item de memória normalizado
+- várias seções lógicas
+- vários chunks de recuperação
+- um vetor por chunk
+
+Sem o worker, o sistema teria apenas:
+
+- evento bruto
+- payload preservado
+- banco sem projeção útil para busca
+
+Com o worker, o sistema passa a ter:
+
+- memória estruturada
+- granularidade de recuperação
+- vetores consultáveis
+- base pronta para o MCP server
+
 ## Configuração do Codex
 
 O diretório `.codex/` torna a memória parte do ambiente padrão do Codex.

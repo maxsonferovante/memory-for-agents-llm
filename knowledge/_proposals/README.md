@@ -2,6 +2,14 @@
 
 This directory holds draft memory updates before they are promoted into canonical knowledge.
 
+## Current state
+
+- 50 markdown files in `knowledge/_proposals/`
+- 31 promoted proposal drafts retained as history
+- 5 active draft proposals still under review
+- Package `README.md` files document bundle scope and promotion intent
+- No exact duplicate proposal content was detected during audit
+
 ## Rules
 
 - One topic per file.
@@ -39,5 +47,26 @@ This directory holds draft memory updates before they are promoted into canonica
 
 - [2026-06-10-distribution-installation/](./2026-06-10-distribution-installation/) - versioned package distribution and Claude Code installation contract.
 - [2026-06-11-structured-memory-mcp/](./2026-06-11-structured-memory-mcp/) - structured memory, vector indexing, and MCP consumption roadmap.
+- [2026-06-12-claude-project-mcp-registration/](./2026-06-12-claude-project-mcp-registration/) - Claude project MCP registration and product doc index maintenance.
 - [2026-06-12-codex-installer-and-local-observability/](./2026-06-12-codex-installer-and-local-observability/) - Codex installer TOML serialization invariants and local stack runtime observability baseline.
+- [2026-06-12-local-stack-postgres-mcp/](./2026-06-12-local-stack-postgres-mcp/) - local-stack Postgres MCP runtime ADR.
 - [2026-06-12-memory-curation-autopromotion/](./2026-06-12-memory-curation-autopromotion/) - shared autopromotion rule for Codex and Claude memory-curation sessions.
+- [2026-06-12-repo-operator-conventions/](./2026-06-12-repo-operator-conventions/) - operator conventions for RTK command execution in repo projects.
+- [2026-06-13-local-memory-compose-proxy-routing/](./2026-06-13-local-memory-compose-proxy-routing/) - local memory compose proxy routing ADR.
+- [2026-06-14-mcp-oauth-discovery/](./2026-06-14-mcp-oauth-discovery/) - MCP OAuth discovery and architecture decision record.
+- [2026-06-15-spec-memory-platform/](./2026-06-15-spec-memory-platform/) - spec memory platform architecture, event taxonomy, and MCP consumption.
+- [2026-06-16-session-bootstrap-and-canonical-sync/](./2026-06-16-session-bootstrap-and-canonical-sync/) - session bootstrap, canonical sync, and hook coverage baseline.
+
+## Package themes
+
+- Memory foundation: `2026-06-09-memory-foundation`
+- Distribution and install contracts: `2026-06-10-distribution-installation`, `2026-06-12-codex-installer-and-local-observability`
+- MCP and local stack runtime: `2026-06-11-structured-memory-mcp`, `2026-06-12-local-stack-postgres-mcp`, `2026-06-14-mcp-oauth-discovery`
+- Memory curation and repository lifecycle: `2026-06-12-memory-curation-autopromotion`, `2026-06-12-repo-operator-conventions`, `2026-06-16-session-bootstrap-and-canonical-sync`
+- Spec memory platform: `2026-06-15-spec-memory-platform`
+
+## Historical drafts
+
+- Promoted proposals may remain in their package directories as stable historical drafts.
+- Use package `README.md` files to understand the bundle scope and promotion intent.
+- Keep this root index current so reviewers can find all active and historical packages.
