@@ -16,11 +16,13 @@ COPILOT_ASSET_PATHS = (
     Path("prompts"),
     Path("agents"),
     Path("skills"),
+    Path("hooks"),
     Path("workflows/spec-memory-copilot-events.yml"),
 )
 
 COPILOT_REPO_ASSET_PATHS = (
     Path("scripts/copilot_event_capture.py"),
+    Path("scripts/copilot_hook_capture.py"),
 )
 
 

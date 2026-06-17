@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "python3 scripts/copilot_hook_capture.py --phase sessionStart --ignore-errors"
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "command": "python3 scripts/copilot_hook_capture.py --phase postToolUse --ignore-errors"
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "command": "python3 scripts/copilot_hook_capture.py --phase agentStop --ignore-errors"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "command": "python3 scripts/copilot_hook_capture.py --phase sessionEnd --ignore-errors"
+      }
+    ]
+  }
+}
