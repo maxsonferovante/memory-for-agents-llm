@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -316,6 +318,45 @@ def guard_write(path: Path) -> list[str]:
     return []
 
 
+def emit_memory_event(
+    *,
+    event_type: str,
+    path: Path,
+    content: str,
+    scope: str,
+    source: str = "memory-hooks",
+) -> None:
+    repo_root = Path.cwd()
+    poster_script = repo_root / "hooks" / "memory_event_poster.py"
+    if not poster_script.exists():
+        return
+    payload = {
+        "event_type": event_type,
+        "file_path": str(path),
+        "content": content,
+        "scope": scope,
+    }
+    env = dict(os.environ)
+    completed = subprocess.run(
+        [sys.executable, str(poster_script), "--source", source, "--ignore-errors"],
+        cwd=repo_root,
+        input=f"{json_payload(payload)}\n",
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+        check=False,
+    )
+    if completed.returncode != 0:
+        eprint(f"warning: failed to emit memory event for {path}")
+
+
+def json_payload(payload: dict[str, Any]) -> str:
+    import json
+
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def promote_ready(queue_root: Path, dry_run: bool = False) -> tuple[list[str], bool]:
     messages: list[str] = []
     had_error = False
@@ -369,6 +410,14 @@ def promote_ready(queue_root: Path, dry_run: bool = False) -> tuple[list[str], b
             promoted_meta["promoted_to"] = str(target_path)
             promoted_meta["promoted_at"] = date.today().isoformat()
             write_markdown(proposal_path, promoted_meta, body)
+            canonical_text = f"{format_frontmatter(canonical_meta)}\n\n{body.rstrip()}\n"
+            scope = str(canonical_meta.get("scope") or "repo")
+            emit_memory_event(
+                event_type="memory_promoted",
+                path=target_path,
+                content=canonical_text,
+                scope=scope,
+            )
             messages.append(f"promoted {proposal_path} -> {target_path}")
 
     if not messages:

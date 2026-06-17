@@ -321,6 +321,23 @@ def update_hooks_json(
         settings,
         "PreToolUse",
         build_hook_entry(
+            (
+                f"{poster_command} --source codex-code-hook "
+                "--bootstrap-once --bootstrap-only --sync-canonical --ignore-errors"
+            ),
+            (
+                f"{poster_command_windows} --source codex-code-hook "
+                "--bootstrap-once --bootstrap-only --sync-canonical --ignore-errors"
+            ),
+            ".*",
+            60,
+            "Bootstrapping repo context and canonical memory sync",
+        ),
+    )
+    changed |= merge_hook(
+        settings,
+        "PreToolUse",
+        build_hook_entry(
             f"{runner_command} guard-write",
             f"{runner_command_windows} guard-write",
             ".*",

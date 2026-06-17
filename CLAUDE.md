@@ -44,6 +44,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 - If a workflow repeats, extract it into a skill.
 - If a rule must apply every time, put it in `CLAUDE.md` or `.claude/rules/`.
 - Use hooks to block direct canonical writes and to promote ready proposals automatically.
+- End every user-facing answer with a short offer to convert the reusable outcome into durable knowledge.
 
 ## Standard outputs
 

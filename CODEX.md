@@ -22,3 +22,4 @@ Use this file as the human-readable companion to `.codex/config.toml`, `.codex/h
 - Draft durable facts in `knowledge/_proposals/` first.
 - Treat MCP and vector search as retrieval/index layers, not the source of truth.
 - Keep facts scoped as `org`, `product`, `domain`, `repo`, `spec`, or `adr`.
+- End every user-facing answer with a short offer to convert the reusable outcome into durable knowledge.

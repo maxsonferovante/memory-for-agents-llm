@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error as urllib_error
@@ -16,6 +17,19 @@ from urllib import request as urllib_request
 DEFAULT_INGEST_URL = "http://127.0.0.1:8080/api/v1/events"
 PATH_KEYS = ("file_path", "filePath", "path", "target_path")
 CONTENT_KEYS = ("content", "text", "body", "value")
+SESSION_ID_KEYS = ("session_id", "sessionId")
+PROJECT_CONTEXT_FILES = (
+    "AGENTS.md",
+    "README.md",
+    "QUICKSTART.md",
+    "CODEX.md",
+    "CLAUDE.md",
+    "knowledge/README.md",
+    "hooks/README.md",
+    "local_stack/README.md",
+    ".codex/README.md",
+    ".claude/CLAUDE.md",
+)
 
 
 def utc_now() -> str:
@@ -48,6 +62,11 @@ def first_string(value: object, keys: tuple[str, ...]) -> str | None:
     return None
 
 
+def repo_root() -> Path:
+    top_level = git_output("rev-parse", "--show-toplevel")
+    return Path(top_level) if top_level else Path.cwd()
+
+
 def git_output(*args: str) -> str | None:
     try:
         completed = subprocess.run(
@@ -63,10 +82,7 @@ def git_output(*args: str) -> str | None:
 
 
 def detect_repo_name() -> str:
-    top_level = git_output("rev-parse", "--show-toplevel")
-    if not top_level:
-        return Path.cwd().name or "repo"
-    return Path(top_level).name
+    return repo_root().name or "repo"
 
 
 def detect_branch() -> str | None:
@@ -97,6 +113,10 @@ def extract_content(payload: dict[str, object]) -> str | None:
     return None
 
 
+def extract_session_id(payload: dict[str, object]) -> str | None:
+    return first_string(payload, SESSION_ID_KEYS)
+
+
 def infer_scope(path_text: str | None) -> str:
     if not path_text:
         return "repo"
@@ -125,6 +145,236 @@ def infer_event_type(path_text: str | None, content: str | None) -> str:
     return "session_stop"
 
 
+def scope_for_knowledge_path(path: Path) -> str:
+    parts = path.parts
+    if "knowledge" not in parts:
+        return "repo"
+    try:
+        idx = parts.index("knowledge")
+        bucket = parts[idx + 1]
+    except Exception:
+        return "repo"
+    if bucket == "_proposals":
+        return "spec"
+    return bucket.rstrip("s") if bucket.endswith("s") else bucket
+
+
+def git_lines(*args: str) -> list[str]:
+    output = git_output(*args)
+    if not output:
+        return []
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def session_key(payload: dict[str, object]) -> str:
+    explicit = (
+        extract_session_id(payload)
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or os.environ.get("CODEX_SESSION_ID")
+        or os.environ.get("SESSION_ID")
+    )
+    if explicit:
+        return explicit
+    return f"{detect_repo_name()}-{os.getppid()}"
+
+
+def session_marker_path(payload: dict[str, object]) -> Path:
+    key = hashlib.sha256(session_key(payload).encode("utf-8")).hexdigest()
+    return Path(tempfile.gettempdir()) / "memory_hook_sessions" / f"{key}.json"
+
+
+def read_project_context() -> str:
+    root = repo_root()
+    sections: list[str] = [
+        "---",
+        f"title: Session bootstrap context for {detect_repo_name()}",
+        "---",
+        "",
+        f"# Session bootstrap context for {detect_repo_name()}",
+        "",
+        "## Purpose",
+        "",
+        "Snapshot the repo-level operating context that the agent should internalize at session start.",
+        "",
+    ]
+
+    for relative_path in PROJECT_CONTEXT_FILES:
+        path = root / relative_path
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except Exception:
+            continue
+        sections.extend(
+            [
+                f"## {relative_path}",
+                "",
+                "```markdown",
+                content,
+                "```",
+                "",
+            ]
+        )
+
+    return "\n".join(sections).rstrip() + "\n"
+
+
+def build_session_summary() -> str:
+    changed = git_lines("status", "--short")
+    staged_stat = git_output("diff", "--cached", "--stat") or "No staged changes."
+    unstaged_stat = git_output("diff", "--stat") or "No unstaged changes."
+    recent_commits = git_lines("log", "--oneline", "-5")
+
+    lines = [
+        "---",
+        f"title: Session work summary for {detect_repo_name()}",
+        "---",
+        "",
+        f"# Session work summary for {detect_repo_name()}",
+        "",
+        "## Working tree",
+        "",
+    ]
+
+    if changed:
+        lines.extend(f"- {line}" for line in changed)
+    else:
+        lines.append("- No working tree changes detected.")
+
+    lines.extend(
+        [
+            "",
+            "## Staged diff stat",
+            "",
+            "```text",
+            staged_stat.strip(),
+            "```",
+            "",
+            "## Unstaged diff stat",
+            "",
+            "```text",
+            unstaged_stat.strip(),
+            "```",
+            "",
+            "## Recent commits",
+            "",
+        ]
+    )
+
+    if recent_commits:
+        lines.extend(f"- {line}" for line in recent_commits)
+    else:
+        lines.append("- No recent commits available.")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def canonical_knowledge_files() -> list[Path]:
+    root = repo_root() / "knowledge"
+    if not root.exists():
+        return []
+    files: list[Path] = []
+    for path in sorted(root.rglob("*.md")):
+        parts = path.parts
+        if "_proposals" in parts:
+            continue
+        if "knowledge" not in parts:
+            continue
+        try:
+            idx = parts.index("knowledge")
+        except ValueError:
+            continue
+        if idx + 1 >= len(parts):
+            continue
+        if parts[idx + 1] == "README.md":
+            continue
+        files.append(path)
+    return files
+
+
+def build_event_from_values(
+    *,
+    source: str,
+    event_type: str,
+    file_path: str | None,
+    content: str,
+    scope: str | None = None,
+    title: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "event_type": event_type,
+        "file_path": file_path,
+        "content": content,
+        "scope": scope,
+    }
+    if title:
+        payload["title"] = title
+    event = build_event(payload, source=source, event_type=event_type)
+    if event is None:
+        raise ValueError("unable to build event")
+    return event
+
+
+def post_project_bootstrap(url: str, source: str, ignore_errors: bool) -> None:
+    context_event = build_event_from_values(
+        source=source,
+        event_type="repo_handoff",
+        file_path="README.md",
+        content=read_project_context(),
+        scope="repo",
+        title=f"Session bootstrap context for {detect_repo_name()}",
+    )
+    post_event(url, context_event, ignore_errors=ignore_errors)
+
+
+def post_canonical_sync(url: str, source: str, ignore_errors: bool) -> int:
+    synced = 0
+    root = repo_root()
+    for path in canonical_knowledge_files():
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        event = build_event_from_values(
+            source=source,
+            event_type="canonical_sync",
+            file_path=str(path.relative_to(root)),
+            content=content,
+            scope=scope_for_knowledge_path(path),
+        )
+        post_event(url, event, ignore_errors=ignore_errors)
+        synced += 1
+    return synced
+
+
+def maybe_post_bootstrap(
+    payload: dict[str, object],
+    url: str,
+    source: str,
+    ignore_errors: bool,
+    sync_canonical: bool,
+) -> None:
+    marker = session_marker_path(payload)
+    if marker.exists():
+        return
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    post_project_bootstrap(url, source, ignore_errors)
+    canonical_count = post_canonical_sync(url, source, ignore_errors) if sync_canonical else 0
+    marker.write_text(
+        json.dumps(
+            {
+                "session_key": session_key(payload),
+                "created_at": utc_now(),
+                "canonical_count": canonical_count,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def build_event(
     payload: dict[str, object], source: str, event_type: str | None = None
 ) -> dict[str, object] | None:
@@ -133,6 +383,8 @@ def build_event(
     resolved_event_type = str(
         event_type or payload.get("event_type") or infer_event_type(path_text, content)
     )
+    if resolved_event_type == "session_stop" and not content and not path_text:
+        content = build_session_summary()
     if not content and not path_text:
         return None
 
@@ -228,12 +480,37 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Log ingestion failures without failing the hook command.",
     )
+    parser.add_argument(
+        "--bootstrap-once",
+        action="store_true",
+        help="Post a repo bootstrap context snapshot once per session.",
+    )
+    parser.add_argument(
+        "--sync-canonical",
+        action="store_true",
+        help="When bootstrapping, also re-send canonical knowledge files to the ingest API.",
+    )
+    parser.add_argument(
+        "--bootstrap-only",
+        action="store_true",
+        help="Run bootstrap logic without posting the current hook payload as a separate event.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     payload = read_payload()
+    if args.bootstrap_once:
+        maybe_post_bootstrap(
+            payload,
+            url=args.url,
+            source=args.source,
+            ignore_errors=args.ignore_errors,
+            sync_canonical=args.sync_canonical,
+        )
+        if args.bootstrap_only:
+            return 0
     event = build_event(payload, source=args.source, event_type=args.event_type)
     if event is None:
         print("memory event poster: nothing to post", file=sys.stderr)
