@@ -8,7 +8,8 @@ This repository is the phase-1 reference for coding-agent memory and orchestrati
 - `knowledge/repos/`: repo-specific conventions and overrides
 - `knowledge/_proposals/`: draft updates before promotion
 - `hooks/`: shared enforcement, ingestion, and promotion hooks
-- `.claude/`: Claude Code agents, rules, skills, and templates
+- `.claude/`: Claude Code rules, skills, and templates
+- `runtime_sources/claude/subagents/`: Claude Code subagent source files installed by the Claude installer
 - `.codex/`: Codex project config, MCP config, hooks, and custom agents
 - `.agents/skills/`: repo-scoped Codex skills discovered from any subdirectory
 - `scripts/`: install, packaging, and smoke-test utilities

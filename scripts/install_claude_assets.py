@@ -448,7 +448,7 @@ def main() -> int:
     repo_root = discover_repo_root()
     stack_urls = build_stack_urls(args.stack_host)
     source_claude_dir = repo_root / ".claude"
-    source_agents = source_claude_dir / "agents"
+    source_agents = repo_root / "runtime_sources" / "claude" / "subagents"
     source_skills = source_claude_dir / "skills"
     source_hooks = repo_root / "hooks"
 

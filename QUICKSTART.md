@@ -66,7 +66,7 @@ Feature branches can be opened automatically by GitHub Actions when `PR_AUTOMATI
 - Git is the source of truth.
 - `knowledge/` stores durable memory.
 - `knowledge/_proposals/` is the staging area before promotion.
-- `CLAUDE.md`, `.claude/rules/`, `.claude/agents/`, `.claude/templates/`, `.claude/skills/`, and `hooks/` define how Claude Code behaves in this repo.
+- `CLAUDE.md`, `.claude/rules/`, `runtime_sources/claude/subagents/`, `.claude/templates/`, `.claude/skills/`, and `hooks/` define how Claude Code behaves in this repo.
 - `CODEX.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/agents/`, `.agents/skills/`, and `hooks/` define how Codex behaves in this repo.
 - `.github/workflows/` and `.github/pull_request_template.md` automate pull request creation for `feature/*` branches.
 

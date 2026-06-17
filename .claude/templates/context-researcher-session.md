@@ -4,7 +4,7 @@ agent: context-researcher
 status: active
 scope: session
 source:
-  - ../agents/context-researcher.md
+  - ../../runtime_sources/claude/subagents/context-researcher.md
   - ../../knowledge/org/context-pack-contract.md
   - ../../knowledge/org/knowledge-scope-model.md
 supersedes: null

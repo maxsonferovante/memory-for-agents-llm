@@ -24,6 +24,7 @@ BASE_PATHS = [
     ".claude",
     ".codex",
     ".agents",
+    "runtime_sources",
     "hooks",
     "local_stack",
     "scripts",

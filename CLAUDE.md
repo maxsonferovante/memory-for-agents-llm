@@ -20,7 +20,7 @@ This repo is the phase-1 reference for Claude Code memory and agent orchestratio
 3. Rules in `.claude/rules/`
 4. Templates in `.claude/templates/`
 5. Skills in `.claude/skills/`
-6. Subagents in `.claude/agents/`
+6. Subagents sourced from `runtime_sources/claude/subagents/` and installed into Claude
 7. Live conversation
 
 ## Operating rules

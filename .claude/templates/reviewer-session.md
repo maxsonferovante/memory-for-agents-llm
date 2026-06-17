@@ -4,7 +4,7 @@ agent: reviewer
 status: active
 scope: session
 source:
-  - ../agents/reviewer.md
+  - ../../runtime_sources/claude/subagents/reviewer.md
   - ../../knowledge/org/memory-governance.md
   - ../../knowledge/org/knowledge-scope-model.md
   - ../../knowledge/org/agent-memory-cycle.md

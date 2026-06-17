@@ -4,7 +4,7 @@ agent: memory-curator
 status: active
 scope: session
 source:
-  - ../agents/memory-curator.md
+  - ../../runtime_sources/claude/subagents/memory-curator.md
   - ../../knowledge/org/memory-curation-flow.md
   - ../../knowledge/org/memory-governance.md
 supersedes: null

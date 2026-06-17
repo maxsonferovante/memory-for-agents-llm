@@ -4,7 +4,7 @@ agent: architect
 status: active
 scope: session
 source:
-  - ../agents/architect.md
+  - ../../runtime_sources/claude/subagents/architect.md
   - ../../knowledge/org/memory-governance.md
   - ../../knowledge/org/knowledge-scope-model.md
   - ../../knowledge/org/agent-memory-cycle.md

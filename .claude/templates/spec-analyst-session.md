@@ -4,7 +4,7 @@ agent: spec-analyst
 status: active
 scope: session
 source:
-  - ../agents/spec-analyst.md
+  - ../../runtime_sources/claude/subagents/spec-analyst.md
   - ../../knowledge/org/context-pack-contract.md
   - ../../knowledge/org/memory-governance.md
   - ../../knowledge/org/knowledge-scope-model.md

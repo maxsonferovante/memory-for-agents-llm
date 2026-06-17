@@ -26,7 +26,7 @@ This repository is the reference for a coding-agent memory system that works acr
 - `AGENTS.md` for Codex and generic agent guidance.
 - `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code operating rules.
 - `.claude/rules/` for Claude path-aware rules and lifecycle constraints.
-- `.claude/agents/` and `.codex/agents/` for specialized subagents.
+- `runtime_sources/claude/subagents/` and `.codex/agents/` for specialized subagents.
 - `.agents/skills/` for repo-scoped Codex skills.
 - `.claude/templates/` for session-ready prompts.
 - `.codex/config.toml` for project-scoped Codex model, subagent, and MCP settings.
@@ -69,7 +69,7 @@ This repository is the reference for a coding-agent memory system that works acr
 - `memory-curator` promotes durable learnings into canonical docs.
 - `cross-repo-coordinator` synchronizes shared changes across repositories.
 
-Claude definitions live in `.claude/agents/*.md`. Codex definitions live in `.codex/agents/*.toml` using Codex custom-agent schema.
+Claude source definitions live in `runtime_sources/claude/subagents/*.md` and are installed into Claude's `agents/` directory by `scripts/install_claude_assets.py`. Codex definitions live in `.codex/agents/*.toml` using Codex custom-agent schema.
 
 ## Session templates
 
