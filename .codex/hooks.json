@@ -6,6 +6,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --bootstrap-once --bootstrap-only --sync-canonical --ignore-errors",
+            "timeout": 60,
+            "statusMessage": "Bootstrapping repo context and canonical memory sync"
+          },
+          {
+            "type": "command",
             "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_hook_runner.py\" guard-write",
             "timeout": 30,
             "statusMessage": "Checking memory write policy"
@@ -49,15 +55,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/memory_event_poster.py\" --source codex-code-hook --ignore-errors --event-type session_stop",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_stop_hook.py\"",
             "timeout": 30,
             "statusMessage": "Capturing session memory handoff"
-          },
-          {
-            "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/hooks/codex_hook_runner.py\" promote-ready",
-            "timeout": 60,
-            "statusMessage": "Promoting ready memory proposals"
           }
         ]
       }

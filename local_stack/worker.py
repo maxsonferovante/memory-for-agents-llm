@@ -79,10 +79,20 @@ def _event_text(event: dict[str, object]) -> str:
 
 def _kind_for(event: dict[str, object]) -> str:
     event_type = str(event.get("event_type") or "session_stop")
+    source_file = str(event.get("file_path") or "")
+    if source_file.startswith("knowledge/specs/"):
+        return "spec"
+    if source_file.startswith("knowledge/adr/"):
+        return "adr"
+    if source_file.startswith("knowledge/runbooks/"):
+        return "runbook"
+    if source_file.startswith("knowledge/glossary/"):
+        return "glossary"
     mapping = {
         "session_stop": "context_pack",
         "proposal_ready": "spec",
         "memory_promoted": "lesson",
+        "canonical_sync": "lesson",
         "repo_handoff": "context_pack",
     }
     return mapping.get(event_type, "lesson")
@@ -90,7 +100,7 @@ def _kind_for(event: dict[str, object]) -> str:
 
 def _status_for(event: dict[str, object]) -> str:
     event_type = str(event.get("event_type") or "")
-    return "canonical" if event_type == "memory_promoted" else "proposal"
+    return "canonical" if event_type in {"memory_promoted", "canonical_sync"} else "proposal"
 
 
 def _provenance(event: dict[str, object]) -> dict[str, object]:

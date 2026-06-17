@@ -340,6 +340,14 @@ def update_settings(
     changed |= merge_hook(
         settings,
         "PreToolUse",
+        build_hook_entry(
+            f"{event_command} --source claude-code-hook --bootstrap-once --bootstrap-only --sync-canonical --ignore-errors",
+            HOOK_MATCHER,
+        ),
+    )
+    changed |= merge_hook(
+        settings,
+        "PreToolUse",
         build_hook_entry(f"{hook_command_base} guard-write", HOOK_MATCHER),
     )
     changed |= merge_hook(

@@ -35,3 +35,4 @@ Use this file as the operational layer for Claude Code sessions in this repo.
 - Treat `knowledge/` as the durable memory store.
 - Treat subagent memory as a convenience layer, not the source of truth.
 - Every proposal must say what changed, why, what it depends on, and what it supersedes.
+- End every user-facing answer with a short offer to convert the reusable outcome into durable knowledge.
