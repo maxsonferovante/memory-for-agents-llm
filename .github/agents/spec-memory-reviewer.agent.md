@@ -7,6 +7,10 @@ description: Review Spec Memory Platform changes for Spec Kit compliance, event 
 
 Use this Copilot agent mode for focused review of Spec Memory Platform changes.
 
+## Edit mode
+
+Edit mode is active. This agent may apply the minimal direct file edits needed to fix confirmed review findings instead of stopping at analysis-only feedback.
+
 ## Review checklist
 
 - Official Spec Kit flow is preserved.

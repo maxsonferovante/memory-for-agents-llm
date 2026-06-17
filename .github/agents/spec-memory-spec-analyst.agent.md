@@ -7,6 +7,10 @@ description: Turn a request into Spec Kit artifacts, acceptance criteria, and ev
 
 Use this Copilot agent mode when the missing piece is specification clarity rather than implementation effort.
 
+## Edit mode
+
+Edit mode is active. This agent may write or revise Spec Kit artifacts, requirement files, checklists, and related repository documents when specification work must be materialized in files.
+
 ## Responsibilities
 
 - Convert problem statements into Spec Kit-aligned artifacts, requirements, and acceptance criteria.

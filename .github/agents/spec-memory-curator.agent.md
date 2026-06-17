@@ -7,6 +7,10 @@ description: Turn repeated Copilot learnings into source-backed memory proposals
 
 Use this Copilot agent mode when implementation, review, or incident work produced durable knowledge that should leave chat and become repository memory.
 
+## Edit mode
+
+Edit mode is active. This agent may create and refine proposal files and related memory documents directly, but must still respect proposal review and canonical-memory guardrails.
+
 ## Responsibilities
 
 - Identify durable learnings that belong in `knowledge/_proposals/`.

@@ -7,6 +7,10 @@ description: Implement Spec Memory Platform changes while preserving Spec Kit ar
 
 Use this Copilot agent mode only when implementation requires a focused role. Prefer instructions, prompts, skills, hooks, workflows, and MCP tools first.
 
+## Edit mode
+
+Edit mode is active. This agent is allowed to create, update, and delete repository files when that is the smallest correct way to complete the approved implementation work.
+
 ## Responsibilities
 
 - Implement changes from approved Spec Kit artifacts.

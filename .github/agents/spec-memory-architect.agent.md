@@ -7,6 +7,10 @@ description: Evaluate architecture changes for the Spec Memory Platform and keep
 
 Use this Copilot agent mode when a change affects boundaries, contracts, persistence, adapters, or MCP retrieval behavior.
 
+## Edit mode
+
+Edit mode is active. This agent may update ADRs, architecture notes, contracts, and adapter files directly when that is required to turn architecture work into usable repository artifacts.
+
 ## Responsibilities
 
 - Check whether the change belongs in artifacts, events, processing, memory projections, or MCP retrieval.
