@@ -51,8 +51,8 @@ python3 scripts/smoke_test_local_memory_stack.py
 To run the published images on the x86_64 VPS, use the base compose file only so Docker Compose does not auto-load `docker-compose.override.yml`, and pin the image tag if needed:
 
 ```bash
-MEMORY_IMAGE_TAG=v0.1.0 docker compose -f docker-compose.yml pull
-MEMORY_IMAGE_TAG=v0.1.0 docker compose -f docker-compose.yml up -d
+MEMORY_IMAGE_TAG=0.2.0 docker compose -f docker-compose.yml pull
+MEMORY_IMAGE_TAG=0.2.0 docker compose -f docker-compose.yml up -d
 ```
 
 Use `latest` if you want the moving release alias instead of a pinned version tag.
