@@ -13,12 +13,32 @@ WORD_RE = re.compile(r"[A-Za-z0-9_À-ÿ]+", re.UNICODE)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.S)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+BULLET_RE = re.compile(r"^\s*[-*]\s+(.*)$", re.M)
 
 
 @dataclass(frozen=True)
 class MarkdownSection:
     heading_path: str
     content: str
+
+
+@dataclass(frozen=True)
+class MarkdownBlock:
+    block_type: str
+    raw_text: str
+
+
+@dataclass(frozen=True)
+class StructuredMarkdownSection:
+    section_index: int
+    level: int
+    heading: str | None
+    heading_path: str
+    raw_text: str
+    blocks: list[MarkdownBlock]
+    links: list[dict[str, str]]
+    references: list[str]
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
@@ -113,6 +133,129 @@ def derive_sections(text: str) -> list[MarkdownSection]:
     return sections
 
 
+def split_blocks(text: str) -> list[MarkdownBlock]:
+    stripped = text.strip("\n")
+    if not stripped:
+        return []
+
+    lines = stripped.splitlines()
+    blocks: list[MarkdownBlock] = []
+    current: list[str] = []
+    in_code_fence = False
+
+    def flush() -> None:
+        if not current:
+            return
+        raw_text = "\n".join(current).strip("\n")
+        if not raw_text:
+            current.clear()
+            return
+        first_line = raw_text.splitlines()[0].strip()
+        if raw_text.startswith("```"):
+            block_type = "code"
+        elif first_line.startswith(("- ", "* ")):
+            block_type = "list"
+        else:
+            block_type = "markdown"
+        blocks.append(MarkdownBlock(block_type=block_type, raw_text=raw_text))
+        current.clear()
+
+    for line in lines:
+        if line.strip().startswith("```"):
+            if in_code_fence:
+                current.append(line)
+                flush()
+                in_code_fence = False
+                continue
+            flush()
+            in_code_fence = True
+            current.append(line)
+            continue
+
+        if in_code_fence:
+            current.append(line)
+            continue
+
+        if not line.strip():
+            flush()
+            continue
+
+        current.append(line)
+
+    flush()
+    return blocks
+
+
+def extract_links(text: str) -> list[dict[str, str]]:
+    return [
+        {"text": match.group(1).strip(), "target": match.group(2).strip()}
+        for match in LINK_RE.finditer(text)
+    ]
+
+
+def extract_references(heading_path: str, text: str) -> list[str]:
+    lower_heading = heading_path.lower()
+    bullet_matches = [match.group(1).strip() for match in BULLET_RE.finditer(text)]
+    if "reference" in lower_heading or "source" in lower_heading:
+        return bullet_matches
+    return []
+
+
+def derive_structured_sections(text: str) -> list[StructuredMarkdownSection]:
+    sections: list[StructuredMarkdownSection] = []
+    current_heading: list[str] = []
+    current_level = 0
+    current_title: str | None = None
+    current_lines: list[str] = []
+
+    def flush() -> None:
+        raw_text = "\n".join(current_lines).strip()
+        if current_title is None and not raw_text:
+            return
+        heading_path = " > ".join(current_heading) if current_heading else "document"
+        sections.append(
+            StructuredMarkdownSection(
+                section_index=len(sections),
+                level=current_level,
+                heading=current_title,
+                heading_path=heading_path,
+                raw_text=raw_text,
+                blocks=split_blocks(raw_text),
+                links=extract_links(raw_text),
+                references=extract_references(heading_path, raw_text),
+            )
+        )
+
+    for line in text.splitlines():
+        heading = HEADING_RE.match(line)
+        if heading:
+            flush()
+            current_level = len(heading.group(1))
+            current_heading[:] = current_heading[: current_level - 1]
+            current_title = heading.group(2).strip()
+            current_heading.append(current_title)
+            current_lines = []
+            continue
+        current_lines.append(line)
+
+    flush()
+    if not sections and text.strip():
+        raw_text = text.strip()
+        sections.append(
+            StructuredMarkdownSection(
+                section_index=0,
+                level=0,
+                heading=None,
+                heading_path="document",
+                raw_text=raw_text,
+                blocks=split_blocks(raw_text),
+                links=extract_links(raw_text),
+                references=extract_references("document", raw_text),
+            )
+        )
+    return sections
+
+
 def chunk_text(text: str, max_chars: int = 900) -> list[str]:
     normalized = re.sub(r"\n{3,}", "\n\n", text.strip())
     if not normalized:
@@ -171,4 +314,3 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
 
 def load_json_file(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
-

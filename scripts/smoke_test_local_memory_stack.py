@@ -70,6 +70,27 @@ def fetch_chunks() -> list[dict[str, object]]:
     return items if isinstance(items, list) else []
 
 
+def fetch_documents() -> list[dict[str, object]]:
+    with urllib_request.urlopen(f"{STACK_URL}/api/v1/documents", timeout=5) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    items = data.get("items", [])
+    return items if isinstance(items, list) else []
+
+
+def fetch_consolidations() -> list[dict[str, object]]:
+    with urllib_request.urlopen(f"{STACK_URL}/api/v1/consolidations", timeout=5) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    items = data.get("items", [])
+    return items if isinstance(items, list) else []
+
+
+def fetch_writeback_suggestions() -> list[dict[str, object]]:
+    with urllib_request.urlopen(f"{STACK_URL}/api/v1/writeback-suggestions", timeout=5) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    items = data.get("items", [])
+    return items if isinstance(items, list) else []
+
+
 def main() -> int:
     args = parse_args()
     stack_started = False
@@ -79,16 +100,19 @@ def main() -> int:
         wait_for_health(args.timeout)
 
         payload = {
-            "event_type": "session_stop",
+            "event_type": "memory_created",
             "repo": Path(REPO_ROOT).name,
             "branch": "feature/local-memory-stack",
             "commit_sha": run("git", "rev-parse", "HEAD").strip(),
             "file_path": "knowledge/repos/smoke-test.md",
+            "canonical_path": "knowledge/repos/smoke-test.md",
             "scope": "repo",
             "source": "claude-code-hook",
             "session_id": "smoke-test-session",
             "created_at": "2026-06-11T00:00:00Z",
+            "operation": "update",
             "content": """---
+id: smoke-test-memory-doc
 title: Smoke test memory
 ---
 
@@ -103,6 +127,9 @@ This note exists only to validate the local ingestion and indexing flow.
         while time.time() < deadline:
             items = fetch_items()
             chunks = fetch_chunks()
+            documents = fetch_documents()
+            consolidations = fetch_consolidations()
+            writeback_suggestions = fetch_writeback_suggestions()
             match = next(
                 (
                     item
@@ -124,6 +151,37 @@ This note exists only to validate the local ingestion and indexing flow.
                 ),
                 None,
             )
+            document_match = next(
+                (
+                    document
+                    for document in documents
+                    if isinstance(document, dict)
+                    and document.get("document_id") == "smoke-test-memory-doc"
+                    and document.get("canonical_path") == "knowledge/repos/smoke-test.md"
+                    and document.get("status") == "active"
+                ),
+                None,
+            )
+            consolidation_match = next(
+                (
+                    consolidation
+                    for consolidation in consolidations
+                    if isinstance(consolidation, dict)
+                    and consolidation.get("scope") == "repo"
+                    and consolidation.get("slug") == Path(REPO_ROOT).name
+                ),
+                None,
+            )
+            writeback_match = next(
+                (
+                    suggestion
+                    for suggestion in writeback_suggestions
+                    if isinstance(suggestion, dict)
+                    and suggestion.get("document_id") == "smoke-test-memory-doc"
+                    and suggestion.get("target_path") == "knowledge/repos/smoke-test.md"
+                ),
+                None,
+            )
             if match and chunk_match:
                 print(
                     json.dumps(
@@ -131,17 +189,26 @@ This note exists only to validate the local ingestion and indexing flow.
                             "status": "ok",
                             "indexed_item": match,
                             "indexed_chunk": chunk_match,
+                            "document_revision": document_match,
+                            "consolidation": consolidation_match,
+                            "writeback_suggestion": writeback_match,
                             "item_count": len(items),
                             "chunk_count": len(chunks),
+                            "document_count": len(documents),
+                            "consolidation_count": len(consolidations),
+                            "writeback_count": len(writeback_suggestions),
                         },
                         indent=2,
                         ensure_ascii=False,
                     )
                 )
-                return 0
+                if document_match and consolidation_match and writeback_match:
+                    return 0
             time.sleep(1)
 
-        raise SystemExit("smoke test did not index the expected item and chunk in time")
+        raise SystemExit(
+            "smoke test did not produce the expected item, document revision, consolidation, and writeback suggestion in time"
+        )
     finally:
         if stack_started and not args.keep_up:
             subprocess.run(["docker", "compose", "down", "-v"], cwd=REPO_ROOT, check=False)

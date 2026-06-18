@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,19 @@ DEFAULT_INGEST_URL = "http://127.0.0.1:8080/api/v1/events"
 PATH_KEYS = ("file_path", "filePath", "path", "target_path")
 CONTENT_KEYS = ("content", "text", "body", "value")
 SESSION_ID_KEYS = ("session_id", "sessionId")
+DOCUMENT_ID_KEYS = ("document_id", "documentId")
+REVISION_ID_KEYS = ("revision_id", "revisionId")
+PARENT_REVISION_ID_KEYS = ("parent_revision_id", "parentRevisionId")
+OPERATION_KEYS = ("operation", "op")
+CANONICAL_PATH_KEYS = ("canonical_path", "canonicalPath")
+OFFICIAL_SPEC_KIT_FLOW = [
+    "context_pack",
+    "task_work",
+    "memory_delta",
+    "proposal",
+    "promotion",
+    "canonical_memory",
+]
 PROJECT_CONTEXT_FILES = (
     "AGENTS.md",
     "README.md",
@@ -114,6 +128,89 @@ def extract_content(payload: dict[str, object]) -> str | None:
 
 def extract_session_id(payload: dict[str, object]) -> str | None:
     return first_string(payload, SESSION_ID_KEYS)
+
+
+def extract_document_id(payload: dict[str, object]) -> str | None:
+    return first_string(payload, DOCUMENT_ID_KEYS)
+
+
+def extract_revision_id(payload: dict[str, object]) -> str | None:
+    return first_string(payload, REVISION_ID_KEYS)
+
+
+def extract_parent_revision_id(payload: dict[str, object]) -> str | None:
+    return first_string(payload, PARENT_REVISION_ID_KEYS)
+
+
+def extract_operation(payload: dict[str, object]) -> str | None:
+    return first_string(payload, OPERATION_KEYS)
+
+
+def extract_canonical_path(payload: dict[str, object]) -> str | None:
+    return first_string(payload, CANONICAL_PATH_KEYS)
+
+
+def frontmatter_scalar(content: str | None, key: str) -> str | None:
+    if not content:
+        return None
+    match = re.match(r"^---\n(.*?)\n---\n?(.*)$", content, re.S)
+    if not match:
+        return None
+    raw_frontmatter = match.group(1)
+    key_match = re.search(rf"^{re.escape(key)}:\s*(.+)$", raw_frontmatter, re.M)
+    if not key_match:
+        return None
+    return key_match.group(1).strip().strip("\"'")
+
+
+def infer_document_id(payload: dict[str, object], path_text: str | None, content: str | None) -> str:
+    explicit = extract_document_id(payload)
+    if explicit:
+        return explicit
+    for key in ("document_id", "id"):
+        candidate = frontmatter_scalar(content, key)
+        if candidate:
+            return candidate
+    seed = "|".join([detect_repo_name(), path_text or "unknown"])
+    return f"doc_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:16]}"
+
+
+def infer_canonical_path(payload: dict[str, object], path_text: str | None) -> str | None:
+    explicit = extract_canonical_path(payload)
+    if explicit:
+        return explicit
+    return path_text
+
+
+def infer_operation(
+    payload: dict[str, object], path_text: str | None, event_type: str, content: str | None
+) -> str:
+    explicit = extract_operation(payload)
+    if explicit:
+        return explicit
+    if event_type == "memory_deleted":
+        return "delete"
+    if event_type == "canonical_sync":
+        return "sync"
+    if content:
+        return "update"
+    if path_text:
+        return "touch"
+    return "session_stop"
+
+
+def infer_revision_id(
+    payload: dict[str, object],
+    document_id: str,
+    content_hash: str,
+    created_at: str,
+    event_type: str,
+) -> str:
+    explicit = extract_revision_id(payload)
+    if explicit:
+        return explicit
+    seed = "|".join([document_id, content_hash, created_at, event_type])
+    return f"rev_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:16]}"
 
 
 def infer_scope(path_text: str | None) -> str:
@@ -469,6 +566,13 @@ def build_event(
         if content
         else hashlib.sha256((path_text or "").encode("utf-8")).hexdigest()
     )
+    document_id = infer_document_id(payload, path_text, content)
+    canonical_path = infer_canonical_path(payload, path_text)
+    operation = infer_operation(payload, path_text, resolved_event_type, content)
+    parent_revision_id = extract_parent_revision_id(payload)
+    revision_id = infer_revision_id(
+        payload, document_id, content_hash, created_at, resolved_event_type
+    )
     event_id_seed = "|".join(
         [
             resolved_event_type,
@@ -476,6 +580,8 @@ def build_event(
             branch,
             commit,
             path_text or "",
+            document_id,
+            revision_id,
             session_id,
             created_at,
             content_hash,
@@ -499,6 +605,11 @@ def build_event(
         "commit_sha": commit or None,
         "file_path": path_text,
         "scope": str(payload.get("scope") or infer_scope(path_text)),
+        "document_id": document_id,
+        "revision_id": revision_id,
+        "parent_revision_id": parent_revision_id,
+        "operation": operation,
+        "canonical_path": canonical_path,
         "source": source,
         "session_id": session_id or None,
         "created_at": created_at,
@@ -520,6 +631,11 @@ def build_event(
             "path": path_text,
             "uri": f"file://{path_text}" if path_text else None,
             "version": commit or content_hash,
+            "document_id": document_id,
+            "revision_id": revision_id,
+            "parent_revision_id": parent_revision_id,
+            "operation": operation,
+            "canonical_path": canonical_path,
         },
         "correlation": {
             "session_id": session_id or None,
@@ -540,6 +656,11 @@ def build_event(
                 for value in (path_text, commit, payload.get("tool_name"))
                 if value
             ],
+            "document_id": document_id,
+            "revision_id": revision_id,
+            "parent_revision_id": parent_revision_id,
+            "operation": operation,
+            "canonical_path": canonical_path,
         },
     }
     return event

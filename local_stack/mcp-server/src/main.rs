@@ -191,6 +191,23 @@ struct RecentEventsArgs {
     limit: Option<u32>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct DocumentArgs {
+    document_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ConsolidationArgs {
+    scope: String,
+    slug: String,
+    repo: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WritebackArgs {
+    target: String,
+}
+
 #[derive(Debug, FromRow)]
 struct MemoryItemRow {
     id: String,
@@ -261,6 +278,87 @@ struct SearchCandidateRow {
     created_at: String,
     updated_at: String,
     distance: f64,
+}
+
+#[derive(Debug, FromRow)]
+struct DocumentRevisionRow {
+    id: String,
+    document_id: String,
+    event_id: String,
+    repo: String,
+    scope: String,
+    canonical_path: String,
+    source_file: String,
+    operation: String,
+    parent_revision_id: Option<String>,
+    title: String,
+    content_hash: String,
+    frontmatter: Value,
+    raw_text: String,
+    body_text: String,
+    links: Value,
+    references: Value,
+    provenance: Value,
+    status: String,
+    is_deleted: bool,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct DocumentSectionRow {
+    id: String,
+    revision_id: String,
+    document_id: String,
+    section_index: i64,
+    level: i64,
+    heading: Option<String>,
+    heading_path: String,
+    raw_text: String,
+    blocks: Value,
+    links: Value,
+    references: Value,
+    created_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct ConsolidationSnapshotRow {
+    id: String,
+    scope: String,
+    repo: String,
+    slug: String,
+    title: String,
+    document_ids: Value,
+    snapshot: Value,
+    content_hash: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct WritebackSuggestionRow {
+    id: String,
+    document_id: String,
+    target_path: String,
+    based_on_revision_id: String,
+    suggestion: Value,
+    status: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, FromRow)]
+struct ConflictRow {
+    id: String,
+    document_id: String,
+    repo: String,
+    canonical_path: String,
+    database_revision_id: Option<String>,
+    repo_content_hash: Option<String>,
+    status: String,
+    details: Value,
+    created_at: String,
+    updated_at: String,
 }
 
 fn normalize_words(text: &str) -> Vec<String> {
@@ -506,6 +604,260 @@ async fn fetch_recent_events(
     .await
 }
 
+async fn fetch_document_revision(
+    pool: &PgPool,
+    document_id: &str,
+) -> Result<Option<DocumentRevisionRow>, sqlx::Error> {
+    sqlx::query_as::<_, DocumentRevisionRow>(
+        r#"
+        SELECT
+            id,
+            document_id,
+            event_id,
+            repo,
+            scope,
+            canonical_path,
+            source_file,
+            operation,
+            parent_revision_id,
+            title,
+            content_hash,
+            frontmatter_json::jsonb AS frontmatter,
+            raw_text,
+            body_text,
+            links_json::jsonb AS links,
+            references_json::jsonb AS references,
+            provenance_json::jsonb AS provenance,
+            status,
+            is_deleted,
+            created_at,
+            updated_at
+        FROM document_revisions
+        WHERE document_id = $1
+        ORDER BY
+            CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+            updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(document_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn fetch_document_sections(
+    pool: &PgPool,
+    revision_id: &str,
+) -> Result<Vec<DocumentSectionRow>, sqlx::Error> {
+    sqlx::query_as::<_, DocumentSectionRow>(
+        r#"
+        SELECT
+            id,
+            revision_id,
+            document_id,
+            section_index::bigint AS section_index,
+            level::bigint AS level,
+            heading,
+            heading_path,
+            raw_text,
+            blocks_json::jsonb AS blocks,
+            links_json::jsonb AS links,
+            references_json::jsonb AS references,
+            created_at
+        FROM document_sections
+        WHERE revision_id = $1
+        ORDER BY section_index ASC
+        "#,
+    )
+    .bind(revision_id)
+    .fetch_all(pool)
+    .await
+}
+
+async fn fetch_latest_conflict(
+    pool: &PgPool,
+    document_id: &str,
+) -> Result<Option<ConflictRow>, sqlx::Error> {
+    sqlx::query_as::<_, ConflictRow>(
+        r#"
+        SELECT
+            id,
+            document_id,
+            repo,
+            canonical_path,
+            database_revision_id,
+            repo_content_hash,
+            status,
+            details_json::jsonb AS details,
+            created_at,
+            updated_at
+        FROM reconciliation_conflicts
+        WHERE document_id = $1
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(document_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn fetch_latest_writeback_suggestion(
+    pool: &PgPool,
+    document_id: &str,
+) -> Result<Option<WritebackSuggestionRow>, sqlx::Error> {
+    sqlx::query_as::<_, WritebackSuggestionRow>(
+        r#"
+        SELECT
+            id,
+            document_id,
+            target_path,
+            based_on_revision_id,
+            suggestion_json::jsonb AS suggestion,
+            status,
+            created_at,
+            updated_at
+        FROM writeback_suggestions
+        WHERE document_id = $1
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(document_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn fetch_consolidation_snapshot(
+    pool: &PgPool,
+    scope: &str,
+    repo: &str,
+    slug: &str,
+) -> Result<Option<ConsolidationSnapshotRow>, sqlx::Error> {
+    sqlx::query_as::<_, ConsolidationSnapshotRow>(
+        r#"
+        SELECT
+            id,
+            scope,
+            repo,
+            slug,
+            title,
+            document_ids_json::jsonb AS document_ids,
+            snapshot_json::jsonb AS snapshot,
+            content_hash,
+            created_at,
+            updated_at
+        FROM consolidation_snapshots
+        WHERE scope = $1 AND repo = $2 AND slug = $3
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(scope)
+    .bind(repo)
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+}
+
+fn structured_document_json(
+    revision: DocumentRevisionRow,
+    sections: Vec<DocumentSectionRow>,
+    conflict: Option<ConflictRow>,
+    writeback: Option<WritebackSuggestionRow>,
+) -> Value {
+    let mut blocks = Vec::new();
+    let mut section_values = Vec::new();
+    let mut links = Vec::new();
+    let mut references = Vec::new();
+    let conflict_state = conflict
+        .as_ref()
+        .map(|value| value.status.clone())
+        .unwrap_or_else(|| "clear".to_string());
+    let conflict_json = conflict.map(|value| {
+        serde_json::json!({
+            "id": value.id,
+            "document_id": value.document_id,
+            "repo": value.repo,
+            "canonical_path": value.canonical_path,
+            "database_revision_id": value.database_revision_id,
+            "repo_content_hash": value.repo_content_hash,
+            "status": value.status,
+            "details": value.details,
+            "created_at": value.created_at,
+            "updated_at": value.updated_at,
+        })
+    });
+    let writeback_available = writeback.is_some();
+    let writeback_json = writeback.map(|value| {
+        serde_json::json!({
+            "id": value.id,
+            "document_id": value.document_id,
+            "target_path": value.target_path,
+            "based_on_revision_id": value.based_on_revision_id,
+            "suggestion": value.suggestion,
+            "status": value.status,
+            "created_at": value.created_at,
+            "updated_at": value.updated_at,
+        })
+    });
+
+    for section in sections {
+        if let Some(section_blocks) = section.blocks.as_array() {
+            for (block_index, block) in section_blocks.iter().enumerate() {
+                blocks.push(serde_json::json!({
+                    "section_index": section.section_index,
+                    "block_index": block_index as i64,
+                    "block": block,
+                }));
+            }
+        }
+        if let Some(section_links) = section.links.as_array() {
+            links.extend(section_links.iter().cloned());
+        }
+        if let Some(section_refs) = section.references.as_array() {
+            references.extend(section_refs.iter().cloned());
+        }
+        section_values.push(serde_json::json!({
+            "section_index": section.section_index,
+            "level": section.level,
+            "heading": section.heading,
+            "heading_path": section.heading_path,
+            "raw_text": section.raw_text,
+            "blocks": section.blocks,
+            "links": section.links,
+            "references": section.references,
+        }));
+    }
+
+    serde_json::json!({
+        "document_id": revision.document_id,
+        "revision_id": revision.id,
+        "parent_revision_id": revision.parent_revision_id,
+        "event_id": revision.event_id,
+        "status": revision.status,
+        "canonical_path": revision.canonical_path,
+        "source_file": revision.source_file,
+        "operation": revision.operation,
+        "title": revision.title,
+        "frontmatter": revision.frontmatter,
+        "raw_text": revision.raw_text,
+        "body_text": revision.body_text,
+        "sections": section_values,
+        "blocks": blocks,
+        "links": links,
+        "references": references,
+        "provenance": revision.provenance,
+        "conflict_state": conflict_state,
+        "conflict": conflict_json,
+        "writeback_available": writeback_available,
+        "writeback_suggestion": writeback_json,
+        "content_hash": revision.content_hash,
+        "created_at": revision.created_at,
+        "updated_at": revision.updated_at,
+    })
+}
+
 async fn oauth_authorization_server() -> axum::Json<OAuthAuthorizationServerMetadata> {
     axum::Json(oauth_authorization_server_metadata())
 }
@@ -629,8 +981,18 @@ impl MemoryServer {
             .into_values()
             .map(|(item, vector_score)| {
                 let score = (lexical_score(&item, &args.query) * 0.6) + (vector_score * 0.4);
+                let document_id = item
+                    .provenance
+                    .get("document_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let resource = document_id
+                    .clone()
+                    .map(|value| format!("memory://documents/{}", value))
+                    .unwrap_or_else(|| format!("memory://items/{}", item.id));
                 serde_json::json!({
                     "id": item.id,
+                    "document_id": document_id,
                     "repo": item.repo,
                     "scope": item.scope,
                     "kind": item.kind,
@@ -639,7 +1001,7 @@ impl MemoryServer {
                     "source_file": item.source_file,
                     "status": item.status,
                     "score": score,
-                    "resource": format!("memory://items/{}", item.id),
+                    "resource": resource,
                 })
             })
             .collect();
@@ -676,6 +1038,93 @@ impl MemoryServer {
         Ok(serde_json::json!({
             "item": item,
             "chunks": chunks,
+        })
+        .to_string())
+    }
+
+    #[tool(description = "Get one canonical document as structural JSON by document id")]
+    fn get_document(&self, Parameters(args): Parameters<DocumentArgs>) -> Result<String, McpError> {
+        tracing::info!(document_id = %args.document_id, "mcp get_document called");
+        let pool = Arc::clone(&self.pool);
+        let revision = self
+            .run_db(fetch_document_revision(&pool, &args.document_id))?
+            .ok_or_else(|| {
+                McpError::resource_not_found(
+                    "document_not_found",
+                    Some(serde_json::json!({ "document_id": args.document_id })),
+                )
+            })?;
+        let sections = self.run_db(fetch_document_sections(&pool, &revision.id))?;
+        let conflict = self.run_db(fetch_latest_conflict(&pool, &revision.document_id))?;
+        let writeback = self.run_db(fetch_latest_writeback_suggestion(&pool, &revision.document_id))?;
+        Ok(structured_document_json(revision, sections, conflict, writeback).to_string())
+    }
+
+    #[tool(description = "Get one persisted consolidation snapshot as structural JSON")]
+    fn get_consolidation(
+        &self,
+        Parameters(args): Parameters<ConsolidationArgs>,
+    ) -> Result<String, McpError> {
+        tracing::info!(scope = %args.scope, slug = %args.slug, repo = ?args.repo, "mcp get_consolidation called");
+        let pool = Arc::clone(&self.pool);
+        let repo = args
+            .repo
+            .clone()
+            .unwrap_or_else(|| if args.scope == "repo" { args.slug.clone() } else { String::new() });
+        let snapshot = self
+            .run_db(fetch_consolidation_snapshot(&pool, &args.scope, &repo, &args.slug))?
+            .ok_or_else(|| {
+                McpError::resource_not_found(
+                    "consolidation_not_found",
+                    Some(serde_json::json!({
+                        "scope": args.scope,
+                        "slug": args.slug,
+                        "repo": repo,
+                    })),
+                )
+            })?;
+        Ok(serde_json::json!({
+            "id": snapshot.id,
+            "scope": snapshot.scope,
+            "repo": snapshot.repo,
+            "slug": snapshot.slug,
+            "title": snapshot.title,
+            "document_ids": snapshot.document_ids,
+            "snapshot": snapshot.snapshot,
+            "content_hash": snapshot.content_hash,
+            "created_at": snapshot.created_at,
+            "updated_at": snapshot.updated_at,
+        })
+        .to_string())
+    }
+
+    #[tool(description = "Return the latest audited write-back suggestion for one document id")]
+    fn suggest_repo_writeback(
+        &self,
+        Parameters(args): Parameters<WritebackArgs>,
+    ) -> Result<String, McpError> {
+        tracing::info!(target = %args.target, "mcp suggest_repo_writeback called");
+        let pool = Arc::clone(&self.pool);
+        let suggestion = self
+            .run_db(fetch_latest_writeback_suggestion(&pool, &args.target))?
+            .ok_or_else(|| {
+                McpError::resource_not_found(
+                    "writeback_suggestion_not_found",
+                    Some(serde_json::json!({ "target": args.target })),
+                )
+            })?;
+        Ok(serde_json::json!({
+            "target": args.target,
+            "suggestion": {
+                "id": suggestion.id,
+                "document_id": suggestion.document_id,
+                "target_path": suggestion.target_path,
+                "based_on_revision_id": suggestion.based_on_revision_id,
+                "payload": suggestion.suggestion,
+                "status": suggestion.status,
+                "created_at": suggestion.created_at,
+                "updated_at": suggestion.updated_at,
+            }
         })
         .to_string())
     }
@@ -870,12 +1319,84 @@ impl ServerHandler for MemoryServer {
         .fetch_all(&*self.pool)
         .await
         .map_err(database_error)?;
+        let documents = sqlx::query_as::<_, DocumentRevisionRow>(
+            r#"
+            SELECT
+                id,
+                document_id,
+                event_id,
+                repo,
+                scope,
+                canonical_path,
+                source_file,
+                operation,
+                parent_revision_id,
+                title,
+                content_hash,
+                frontmatter_json::jsonb AS frontmatter,
+                raw_text,
+                body_text,
+                links_json::jsonb AS links,
+                references_json::jsonb AS references,
+                provenance_json::jsonb AS provenance,
+                status,
+                is_deleted,
+                created_at,
+                updated_at
+            FROM document_revisions
+            WHERE status = 'active' AND is_deleted = FALSE
+            ORDER BY updated_at DESC
+            LIMIT 100
+            "#,
+        )
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(database_error)?;
+        let consolidations = sqlx::query_as::<_, ConsolidationSnapshotRow>(
+            r#"
+            SELECT
+                id,
+                scope,
+                repo,
+                slug,
+                title,
+                document_ids_json::jsonb AS document_ids,
+                snapshot_json::jsonb AS snapshot,
+                content_hash,
+                created_at,
+                updated_at
+            FROM consolidation_snapshots
+            ORDER BY updated_at DESC
+            LIMIT 100
+            "#,
+        )
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(database_error)?;
 
         let mut resources =
             vec![RawResource::new("memory://org/invariants", "org invariants").no_annotation()];
         for item in items.into_iter().map(memory_item_from_row) {
             resources.push(
                 RawResource::new(format!("memory://items/{}", item.id), item.title).no_annotation(),
+            );
+        }
+        for document in documents {
+            resources.push(
+                RawResource::new(
+                    format!("memory://documents/{}", document.document_id),
+                    document.title,
+                )
+                .no_annotation(),
+            );
+        }
+        for consolidation in consolidations {
+            resources.push(
+                RawResource::new(
+                    format!("memory://consolidations/{}/{}", consolidation.scope, consolidation.slug),
+                    consolidation.title,
+                )
+                .no_annotation(),
             );
         }
         tracing::info!(
@@ -968,6 +1489,67 @@ impl ServerHandler for MemoryServer {
                     )],
                 })
             }
+            uri if uri.starts_with("memory://documents/") => {
+                let document_id = uri.trim_start_matches("memory://documents/");
+                let revision = fetch_document_revision(&self.pool, document_id)
+                    .await
+                    .map_err(database_error)?
+                    .ok_or_else(|| {
+                        McpError::resource_not_found(
+                            "document_not_found",
+                            Some(serde_json::json!({ "uri": request.uri })),
+                        )
+                    })?;
+                let sections = fetch_document_sections(&self.pool, &revision.id)
+                    .await
+                    .map_err(database_error)?;
+                let conflict = fetch_latest_conflict(&self.pool, &revision.document_id)
+                    .await
+                    .map_err(database_error)?;
+                let writeback = fetch_latest_writeback_suggestion(&self.pool, &revision.document_id)
+                    .await
+                    .map_err(database_error)?;
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(
+                        structured_document_json(revision, sections, conflict, writeback).to_string(),
+                        &request.uri,
+                    )],
+                })
+            }
+            uri if uri.starts_with("memory://consolidations/") => {
+                let suffix = uri.trim_start_matches("memory://consolidations/");
+                let mut parts = suffix.splitn(2, '/');
+                let scope = parts.next().unwrap_or_default();
+                let slug = parts.next().unwrap_or_default();
+                let repo = if scope == "repo" { slug } else { "" };
+                let snapshot = fetch_consolidation_snapshot(&self.pool, scope, repo, slug)
+                    .await
+                    .map_err(database_error)?
+                    .ok_or_else(|| {
+                        McpError::resource_not_found(
+                            "consolidation_not_found",
+                            Some(serde_json::json!({ "uri": request.uri })),
+                        )
+                    })?;
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(
+                        serde_json::json!({
+                            "id": snapshot.id,
+                            "scope": snapshot.scope,
+                            "repo": snapshot.repo,
+                            "slug": snapshot.slug,
+                            "title": snapshot.title,
+                            "document_ids": snapshot.document_ids,
+                            "snapshot": snapshot.snapshot,
+                            "content_hash": snapshot.content_hash,
+                            "created_at": snapshot.created_at,
+                            "updated_at": snapshot.updated_at,
+                        })
+                        .to_string(),
+                        &request.uri,
+                    )],
+                })
+            }
             _ => Err(McpError::resource_not_found(
                 "resource_not_found",
                 Some(serde_json::json!({
@@ -984,6 +1566,29 @@ impl ServerHandler for MemoryServer {
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
             resource_templates: vec![
+                RawResourceTemplate {
+                    uri_template: "memory://documents/{document_id}".to_string(),
+                    name: "canonical document".to_string(),
+                    title: None,
+                    description: Some(
+                        "Canonical document response in structural JSON, equivalent to markdown"
+                            .to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "memory://consolidations/{scope}/{slug}".to_string(),
+                    name: "consolidation snapshot".to_string(),
+                    title: None,
+                    description: Some(
+                        "Persisted scope or product consolidation in structural JSON".to_string(),
+                    ),
+                    mime_type: Some("application/json".to_string()),
+                    icons: None,
+                }
+                .no_annotation(),
                 RawResourceTemplate {
                     uri_template: "memory://org/{org_id}".to_string(),
                     name: "organization memory".to_string(),

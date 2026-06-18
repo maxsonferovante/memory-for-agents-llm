@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS ingest_events (
     commit_sha TEXT,
     file_path TEXT,
     scope TEXT,
+    document_id TEXT,
+    revision_id TEXT,
+    parent_revision_id TEXT,
+    operation TEXT,
+    canonical_path TEXT,
     source TEXT,
     session_id TEXT,
     created_at TEXT NOT NULL,
@@ -83,6 +88,89 @@ CREATE TABLE IF NOT EXISTS memory_chunks (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS document_revisions (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    event_id TEXT UNIQUE NOT NULL REFERENCES ingest_events(id) ON DELETE CASCADE,
+    repo TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    canonical_path TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    parent_revision_id TEXT,
+    title TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    frontmatter_json TEXT NOT NULL,
+    raw_text TEXT NOT NULL,
+    body_text TEXT NOT NULL,
+    links_json TEXT NOT NULL,
+    references_json TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS document_sections (
+    id TEXT PRIMARY KEY,
+    revision_id TEXT NOT NULL REFERENCES document_revisions(id) ON DELETE CASCADE,
+    document_id TEXT NOT NULL,
+    section_index INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    heading TEXT,
+    heading_path TEXT NOT NULL,
+    raw_text TEXT NOT NULL,
+    blocks_json TEXT NOT NULL,
+    links_json TEXT NOT NULL,
+    references_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS consolidation_snapshots (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    repo TEXT NOT NULL DEFAULT '',
+    slug TEXT NOT NULL,
+    title TEXT NOT NULL,
+    document_ids_json TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(scope, repo, slug)
+);
+
+CREATE TABLE IF NOT EXISTS reconciliation_conflicts (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    canonical_path TEXT NOT NULL,
+    database_revision_id TEXT,
+    repo_content_hash TEXT,
+    status TEXT NOT NULL,
+    details_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS writeback_suggestions (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    target_path TEXT NOT NULL,
+    based_on_revision_id TEXT NOT NULL REFERENCES document_revisions(id) ON DELETE CASCADE,
+    suggestion_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS document_id TEXT;
+ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS revision_id TEXT;
+ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS parent_revision_id TEXT;
+ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS operation TEXT;
+ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS canonical_path TEXT;
+
 ALTER TABLE memory_chunks ADD COLUMN IF NOT EXISTS embedding vector(48);
 
 DO $$
@@ -116,6 +204,12 @@ $$;
 CREATE INDEX IF NOT EXISTS idx_job_queue_status_next_run ON job_queue(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_memory_items_repo_scope ON memory_items(repo, scope);
 CREATE INDEX IF NOT EXISTS idx_memory_chunks_item ON memory_chunks(memory_item_id);
+CREATE INDEX IF NOT EXISTS idx_ingest_events_document_id ON ingest_events(document_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_document_revisions_document ON document_revisions(document_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_document_sections_revision ON document_sections(revision_id, section_index);
+CREATE INDEX IF NOT EXISTS idx_consolidation_snapshots_scope_slug ON consolidation_snapshots(scope, repo, slug);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_conflicts_document ON reconciliation_conflicts(document_id, status);
+CREATE INDEX IF NOT EXISTS idx_writeback_suggestions_document ON writeback_suggestions(document_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding_cosine
 ON memory_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 """
@@ -130,6 +224,11 @@ class IngestedEvent:
     commit_sha: str | None
     file_path: str | None
     scope: str
+    document_id: str | None
+    revision_id: str | None
+    parent_revision_id: str | None
+    operation: str | None
+    canonical_path: str | None
     source: str | None
     session_id: str | None
     created_at: str
@@ -207,10 +306,11 @@ def save_event(
             conn,
             """
             INSERT INTO ingest_events (
-                id, event_type, repo, branch, commit_sha, file_path, scope, source,
+                id, event_type, repo, branch, commit_sha, file_path, scope, document_id,
+                revision_id, parent_revision_id, operation, canonical_path, source,
                 session_id, created_at, content_hash, raw_payload_path, raw_markdown_path,
                 content, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
             """,
             (
                 event_id,
@@ -220,6 +320,11 @@ def save_event(
                 payload.get("commit_sha"),
                 payload.get("file_path"),
                 str(payload.get("scope", "repo")),
+                payload.get("document_id"),
+                payload.get("revision_id"),
+                payload.get("parent_revision_id"),
+                payload.get("operation"),
+                payload.get("canonical_path"),
                 payload.get("source"),
                 payload.get("session_id"),
                 str(payload.get("created_at", utc_now())),
@@ -362,3 +467,215 @@ def replace_chunks(conn, memory_item_id: str, chunks: list[dict[str, object]]) -
                     chunk["created_at"],
                 ),
             )
+
+
+def fetch_latest_document_revision(
+    conn, document_id: str
+) -> dict[str, object] | None:
+    return fetchone(
+        conn,
+        """
+        SELECT *
+        FROM document_revisions
+        WHERE document_id = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (document_id,),
+    )
+
+
+def upsert_document_revision(conn, record: dict[str, object]) -> None:
+    with transaction(conn):
+        if record["status"] in {"active", "deleted"}:
+            execute(
+                conn,
+                """
+                UPDATE document_revisions
+                SET status = 'superseded', updated_at = %s
+                WHERE document_id = %s AND id <> %s AND status = 'active'
+                """,
+                (record["updated_at"], record["document_id"], record["id"]),
+            )
+        execute(
+            conn,
+            """
+            INSERT INTO document_revisions (
+                id, document_id, event_id, repo, scope, canonical_path, source_file,
+                operation, parent_revision_id, title, content_hash, frontmatter_json,
+                raw_text, body_text, links_json, references_json, provenance_json,
+                status, is_deleted, created_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                canonical_path = excluded.canonical_path,
+                source_file = excluded.source_file,
+                operation = excluded.operation,
+                parent_revision_id = excluded.parent_revision_id,
+                title = excluded.title,
+                content_hash = excluded.content_hash,
+                frontmatter_json = excluded.frontmatter_json,
+                raw_text = excluded.raw_text,
+                body_text = excluded.body_text,
+                links_json = excluded.links_json,
+                references_json = excluded.references_json,
+                provenance_json = excluded.provenance_json,
+                status = excluded.status,
+                is_deleted = excluded.is_deleted,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record["id"],
+                record["document_id"],
+                record["event_id"],
+                record["repo"],
+                record["scope"],
+                record["canonical_path"],
+                record["source_file"],
+                record["operation"],
+                record.get("parent_revision_id"),
+                record["title"],
+                record["content_hash"],
+                json.dumps(record["frontmatter"], ensure_ascii=False, sort_keys=True),
+                record["raw_text"],
+                record["body_text"],
+                json.dumps(record["links"], ensure_ascii=False),
+                json.dumps(record["references"], ensure_ascii=False),
+                json.dumps(record["provenance"], ensure_ascii=False, sort_keys=True),
+                record["status"],
+                bool(record.get("is_deleted", False)),
+                record["created_at"],
+                record["updated_at"],
+            ),
+        )
+
+
+def replace_document_sections(
+    conn, revision_id: str, sections: list[dict[str, object]]
+) -> None:
+    with transaction(conn):
+        execute(conn, "DELETE FROM document_sections WHERE revision_id = %s", (revision_id,))
+        for section in sections:
+            execute(
+                conn,
+                """
+                INSERT INTO document_sections (
+                    id, revision_id, document_id, section_index, level, heading, heading_path,
+                    raw_text, blocks_json, links_json, references_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    section["id"],
+                    revision_id,
+                    section["document_id"],
+                    section["section_index"],
+                    section["level"],
+                    section.get("heading"),
+                    section["heading_path"],
+                    section["raw_text"],
+                    json.dumps(section["blocks"], ensure_ascii=False),
+                    json.dumps(section["links"], ensure_ascii=False),
+                    json.dumps(section["references"], ensure_ascii=False),
+                    section["created_at"],
+                ),
+            )
+
+
+def upsert_consolidation_snapshot(conn, record: dict[str, object]) -> None:
+    with transaction(conn):
+        execute(
+            conn,
+            """
+            INSERT INTO consolidation_snapshots (
+                id, scope, repo, slug, title, document_ids_json, snapshot_json,
+                content_hash, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(scope, repo, slug) DO UPDATE SET
+                id = excluded.id,
+                title = excluded.title,
+                document_ids_json = excluded.document_ids_json,
+                snapshot_json = excluded.snapshot_json,
+                content_hash = excluded.content_hash,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record["id"],
+                record["scope"],
+                record.get("repo", ""),
+                record["slug"],
+                record["title"],
+                json.dumps(record["document_ids"], ensure_ascii=False),
+                json.dumps(record["snapshot"], ensure_ascii=False),
+                record["content_hash"],
+                record["created_at"],
+                record["updated_at"],
+            ),
+        )
+
+
+def clear_reconciliation_conflicts(conn, document_id: str) -> None:
+    with transaction(conn):
+        execute(
+            conn,
+            "DELETE FROM reconciliation_conflicts WHERE document_id = %s",
+            (document_id,),
+        )
+
+
+def upsert_reconciliation_conflict(conn, record: dict[str, object]) -> None:
+    with transaction(conn):
+        execute(
+            conn,
+            """
+            INSERT INTO reconciliation_conflicts (
+                id, document_id, repo, canonical_path, database_revision_id, repo_content_hash,
+                status, details_json, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(id) DO UPDATE SET
+                database_revision_id = excluded.database_revision_id,
+                repo_content_hash = excluded.repo_content_hash,
+                status = excluded.status,
+                details_json = excluded.details_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record["id"],
+                record["document_id"],
+                record["repo"],
+                record["canonical_path"],
+                record.get("database_revision_id"),
+                record.get("repo_content_hash"),
+                record["status"],
+                json.dumps(record["details"], ensure_ascii=False),
+                record["created_at"],
+                record["updated_at"],
+            ),
+        )
+
+
+def upsert_writeback_suggestion(conn, record: dict[str, object]) -> None:
+    with transaction(conn):
+        execute(
+            conn,
+            """
+            INSERT INTO writeback_suggestions (
+                id, document_id, target_path, based_on_revision_id, suggestion_json, status,
+                created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(id) DO UPDATE SET
+                suggestion_json = excluded.suggestion_json,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record["id"],
+                record["document_id"],
+                record["target_path"],
+                record["based_on_revision_id"],
+                json.dumps(record["suggestion"], ensure_ascii=False),
+                record["status"],
+                record["created_at"],
+                record["updated_at"],
+            ),
+        )

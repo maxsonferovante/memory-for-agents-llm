@@ -35,6 +35,11 @@ struct IngestEventRequest {
     commit_sha: Option<String>,
     file_path: Option<String>,
     scope: Option<String>,
+    document_id: Option<String>,
+    revision_id: Option<String>,
+    parent_revision_id: Option<String>,
+    operation: Option<String>,
+    canonical_path: Option<String>,
     source: Option<String>,
     session_id: Option<String>,
     created_at: Option<String>,
@@ -58,6 +63,11 @@ struct IngestEventRecord {
     commit_sha: Option<String>,
     file_path: Option<String>,
     scope: Option<String>,
+    document_id: Option<String>,
+    revision_id: Option<String>,
+    parent_revision_id: Option<String>,
+    operation: Option<String>,
+    canonical_path: Option<String>,
     source: Option<String>,
     session_id: Option<String>,
     created_at: String,
@@ -104,6 +114,57 @@ struct MemoryChunkRecord {
     source_file: String,
     provenance_json: String,
     created_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, FromRow, Clone)]
+struct DocumentRevisionRecord {
+    id: String,
+    document_id: String,
+    event_id: String,
+    repo: String,
+    scope: String,
+    canonical_path: String,
+    source_file: String,
+    operation: String,
+    parent_revision_id: Option<String>,
+    title: String,
+    content_hash: String,
+    frontmatter_json: String,
+    raw_text: String,
+    body_text: String,
+    links_json: String,
+    references_json: String,
+    provenance_json: String,
+    status: String,
+    is_deleted: bool,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, FromRow, Clone)]
+struct ConsolidationSnapshotRecord {
+    id: String,
+    scope: String,
+    repo: String,
+    slug: String,
+    title: String,
+    document_ids_json: String,
+    snapshot_json: String,
+    content_hash: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, FromRow, Clone)]
+struct WritebackSuggestionRecord {
+    id: String,
+    document_id: String,
+    target_path: String,
+    based_on_revision_id: String,
+    suggestion_json: String,
+    status: String,
+    created_at: String,
+    updated_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -156,6 +217,11 @@ async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
             commit_sha TEXT,
             file_path TEXT,
             scope TEXT,
+            document_id TEXT,
+            revision_id TEXT,
+            parent_revision_id TEXT,
+            operation TEXT,
+            canonical_path TEXT,
             source TEXT,
             session_id TEXT,
             created_at TEXT NOT NULL,
@@ -216,6 +282,93 @@ async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
             created_at TEXT NOT NULL
         )
         "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS document_revisions (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            event_id TEXT UNIQUE NOT NULL REFERENCES ingest_events(id) ON DELETE CASCADE,
+            repo TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            canonical_path TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            parent_revision_id TEXT,
+            title TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            frontmatter_json TEXT NOT NULL,
+            raw_text TEXT NOT NULL,
+            body_text TEXT NOT NULL,
+            links_json TEXT NOT NULL,
+            references_json TEXT NOT NULL,
+            provenance_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS document_sections (
+            id TEXT PRIMARY KEY,
+            revision_id TEXT NOT NULL REFERENCES document_revisions(id) ON DELETE CASCADE,
+            document_id TEXT NOT NULL,
+            section_index INTEGER NOT NULL,
+            level INTEGER NOT NULL,
+            heading TEXT,
+            heading_path TEXT NOT NULL,
+            raw_text TEXT NOT NULL,
+            blocks_json TEXT NOT NULL,
+            links_json TEXT NOT NULL,
+            references_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS consolidation_snapshots (
+            id TEXT PRIMARY KEY,
+            scope TEXT NOT NULL,
+            repo TEXT NOT NULL DEFAULT '',
+            slug TEXT NOT NULL,
+            title TEXT NOT NULL,
+            document_ids_json TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(scope, repo, slug)
+        )
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS reconciliation_conflicts (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            repo TEXT NOT NULL,
+            canonical_path TEXT NOT NULL,
+            database_revision_id TEXT,
+            repo_content_hash TEXT,
+            status TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS writeback_suggestions (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            target_path TEXT NOT NULL,
+            based_on_revision_id TEXT NOT NULL REFERENCES document_revisions(id) ON DELETE CASCADE,
+            suggestion_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+        r#"ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS document_id TEXT"#,
+        r#"ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS revision_id TEXT"#,
+        r#"ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS parent_revision_id TEXT"#,
+        r#"ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS operation TEXT"#,
+        r#"ALTER TABLE ingest_events ADD COLUMN IF NOT EXISTS canonical_path TEXT"#,
         r#"ALTER TABLE memory_chunks ADD COLUMN IF NOT EXISTS embedding vector(48)"#,
         r#"
         DO $$
@@ -249,8 +402,14 @@ async fn initialize_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"CREATE INDEX IF NOT EXISTS idx_job_queue_status_next_run ON job_queue(status, next_run_at)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_ingest_events_type_scope ON ingest_events(event_type, scope)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_ingest_events_file_path ON ingest_events(file_path)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_ingest_events_document_id ON ingest_events(document_id, created_at)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_items_repo_scope ON memory_items(repo, scope)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_memory_chunks_item ON memory_chunks(memory_item_id)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_document_revisions_document ON document_revisions(document_id, created_at DESC)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_document_sections_revision ON document_sections(revision_id, section_index)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_consolidation_snapshots_scope_slug ON consolidation_snapshots(scope, repo, slug)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_reconciliation_conflicts_document ON reconciliation_conflicts(document_id, status)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_writeback_suggestions_document ON writeback_suggestions(document_id, updated_at DESC)"#,
         r#"
         CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding_cosine
         ON memory_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)
@@ -354,6 +513,9 @@ async fn ingest_event(
         event_type = %event_type,
         repo = %payload.repo,
         scope = %scope,
+        document_id = ?payload.document_id,
+        revision_id = ?payload.revision_id,
+        operation = ?payload.operation,
         source = ?payload.source,
         session_id = ?payload.session_id,
         file_path = ?payload.file_path,
@@ -402,10 +564,11 @@ async fn ingest_event(
     sqlx::query(
         r#"
         INSERT INTO ingest_events (
-            id, event_type, repo, branch, commit_sha, file_path, scope, source, session_id,
+            id, event_type, repo, branch, commit_sha, file_path, scope, document_id,
+            revision_id, parent_revision_id, operation, canonical_path, source, session_id,
             created_at, content_hash, raw_payload_path, raw_markdown_path, content, status
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'pending')
         ON CONFLICT (id) DO NOTHING
         "#,
     )
@@ -416,6 +579,11 @@ async fn ingest_event(
     .bind(&payload.commit_sha)
     .bind(&payload.file_path)
     .bind(&scope)
+    .bind(&payload.document_id)
+    .bind(&payload.revision_id)
+    .bind(&payload.parent_revision_id)
+    .bind(&payload.operation)
+    .bind(&payload.canonical_path)
     .bind(&payload.source)
     .bind(&payload.session_id)
     .bind(&created_at)
@@ -593,6 +761,45 @@ async fn list_chunks(
     Ok(Json(ItemsResponse { items }))
 }
 
+async fn list_document_revisions(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<DocumentRevisionRecord>>, (StatusCode, String)> {
+    let items = sqlx::query_as::<_, DocumentRevisionRecord>(
+        r#"SELECT * FROM document_revisions ORDER BY updated_at DESC"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed document revisions");
+    Ok(Json(ItemsResponse { items }))
+}
+
+async fn list_consolidation_snapshots(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<ConsolidationSnapshotRecord>>, (StatusCode, String)> {
+    let items = sqlx::query_as::<_, ConsolidationSnapshotRecord>(
+        r#"SELECT * FROM consolidation_snapshots ORDER BY updated_at DESC"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed consolidation snapshots");
+    Ok(Json(ItemsResponse { items }))
+}
+
+async fn list_writeback_suggestions(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ItemsResponse<WritebackSuggestionRecord>>, (StatusCode, String)> {
+    let items = sqlx::query_as::<_, WritebackSuggestionRecord>(
+        r#"SELECT * FROM writeback_suggestions ORDER BY updated_at DESC"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    tracing::info!(count = items.len(), "listed writeback suggestions");
+    Ok(Json(ItemsResponse { items }))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -658,6 +865,9 @@ async fn main() {
         .route("/v1/events/batch", post(ingest_event_batch))
         .route("/v1/items", get(list_items))
         .route("/v1/chunks", get(list_chunks))
+        .route("/v1/documents", get(list_document_revisions))
+        .route("/v1/consolidations", get(list_consolidation_snapshots))
+        .route("/v1/writeback-suggestions", get(list_writeback_suggestions))
         .with_state(state);
 
     let addr: SocketAddr = bind
