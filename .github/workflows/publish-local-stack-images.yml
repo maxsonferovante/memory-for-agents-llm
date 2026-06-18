@@ -12,10 +12,10 @@ on:
         type: string
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       DOCKERHUB_NAMESPACE: maxsonferovante
     steps:
@@ -53,3 +53,36 @@ jobs:
           python3 scripts/publish_local_stack_images.py \
             --namespace "${DOCKERHUB_NAMESPACE}" \
             --version "${{ steps.version.outputs.value }}"
+
+      - name: Build release archives
+        run: |
+          python3 scripts/package_release.py \
+            --version "${{ steps.version.outputs.value }}"
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Install
+
+          Baixe o arquivo `.zip` ou `.tar.gz` na seção de assets desta release.
+
+          Para subir os containers com a imagem publicada, troque apenas o valor da tag:
+
+          ```bash
+          MEMORY_IMAGE_TAG=${{ steps.version.outputs.value }} docker compose -f docker-compose.yml pull
+          MEMORY_IMAGE_TAG=${{ steps.version.outputs.value }} docker compose -f docker-compose.yml up -d
+          ```
+
+          Se quiser instalar o pacote localmente a partir do arquivo compactado, use o instalador incluído no repositório.
+          EOF
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/releases/memory-for-agents-llm-${{ steps.version.outputs.value }}.tar.gz
+            dist/releases/memory-for-agents-llm-${{ steps.version.outputs.value }}.tar.gz.sha256
+            dist/releases/memory-for-agents-llm-${{ steps.version.outputs.value }}.zip
+            dist/releases/memory-for-agents-llm-${{ steps.version.outputs.value }}.zip.sha256
+          body_path: release-notes.md

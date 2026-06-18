@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import tarfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -109,6 +110,16 @@ def safe_tarinfo(path: Path, arcname: str) -> tarfile.TarInfo:
     return info
 
 
+def safe_zipinfo(path: Path, arcname: str) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(filename=arcname)
+    stat = path.stat()
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.file_size = stat.st_size
+    info.date_time = (1980, 1, 1, 0, 0, 0)
+    info.external_attr = 0o644 << 16
+    return info
+
+
 def write_release_manifest(
     release_root: Path,
     version: str,
@@ -176,6 +187,43 @@ def build_artifact(
     return artifact_path
 
 
+def build_zip_artifact(
+    repo_root: Path,
+    output_dir: Path,
+    version: str,
+    include_knowledge: bool,
+) -> Path:
+    commit = git_commit(repo_root)
+    release_root = output_dir / f"{PACKAGE_NAME}-{version}"
+    if release_root.exists():
+        shutil.rmtree(release_root)
+    release_root.mkdir(parents=True, exist_ok=True)
+
+    source_paths = collect_paths(repo_root, include_knowledge)
+    files = iter_release_files(source_paths)
+    write_release_manifest(release_root, version, commit, include_knowledge, files, repo_root)
+
+    for source in files:
+        relative = source.relative_to(repo_root)
+        target = release_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+    artifact_path = output_dir / f"{PACKAGE_NAME}-{version}.zip"
+    with zipfile.ZipFile(artifact_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(release_root.rglob("*")):
+            if not path.is_file():
+                continue
+            arcname = str(path.relative_to(output_dir).as_posix())
+            info = safe_zipinfo(path, arcname)
+            with path.open("rb") as handle:
+                archive.writestr(info, handle.read())
+
+    checksum_path = artifact_path.parent / f"{artifact_path.name}.sha256"
+    checksum_path.write_text(f"{sha256_file(artifact_path)}  {artifact_path.name}\n", encoding="utf-8")
+    return artifact_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a deterministic release artifact.")
     parser.add_argument(
@@ -208,11 +256,19 @@ def main() -> int:
         version=version,
         include_knowledge=args.include_knowledge,
     )
+    zip_path = build_zip_artifact(
+        repo_root=repo_root,
+        output_dir=output_dir,
+        version=version,
+        include_knowledge=args.include_knowledge,
+    )
 
     print(f"version: {version}")
     print(f"commit: {git_commit(repo_root)}")
     print(f"artifact: {artifact_path}")
     print(f"checksum: {artifact_path.parent / (artifact_path.name + '.sha256')}")
+    print(f"zip: {zip_path}")
+    print(f"zip_checksum: {zip_path.parent / (zip_path.name + '.sha256')}")
     return 0
 
 
