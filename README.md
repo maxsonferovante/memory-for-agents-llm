@@ -48,12 +48,12 @@ This repository is the reference for a coding-agent memory system that works acr
 - Recommended install: `python3 scripts/install_claude_assets.py --stack-host 127.0.0.1` or the equivalent launcher on your platform.
 - Claude hook settings are written to `~/.claude/settings.json`; Claude project MCP registration is written to `~/.claude.json` under the current repo path.
 - `docker compose up --build` starts the local mini stack with API, worker, and MCP server. The base compose file points at Docker Hub images and `docker-compose.override.yml` restores local builds.
-- `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item plus stored chunk embedding.
+- `python3 scripts/smoke_test_local_memory_stack.py` brings the stack up, posts a hook event, and verifies the indexed item, document revision, consolidation snapshot, and write-back suggestion.
 
 ## Runtime layout
 
 - `local_stack/api/` is the active Rust ingestion API used by the local stack.
-- `local_stack/worker/` is the async indexer.
+- `local_stack/worker/` is the async indexer and snapshot materializer.
 - `local_stack/mcp-server/` is the Rust MCP read surface.
 
 ## Available agents
@@ -101,28 +101,30 @@ Claude source definitions live in `runtime_sources/claude/subagents/*.md` and ar
 - `.codex/agents/*.toml` defines focused custom agents: coordinator, context researcher, spec analyst, architect, implementer, reviewer, curator, and cross-repo coordinator.
 - `.agents/skills/` exposes the reusable workflows so Codex can load context-pack, memory-curation, and cross-repo-synthesis instructions from the correct repo-scoped skill path.
 - `scripts/install_codex_assets.py` can also copy those skills into the user-level `~/.agents/skills` directory for global use.
-- The local memory MCP server remains the shared read layer and is consumed through the Docker-exposed proxy endpoint `http://127.0.0.1:8080/mcp`; remote installs derive the same path from `--stack-host`. Markdown remains the source of truth.
+- The local memory MCP server remains the shared read layer and is consumed through the Docker-exposed proxy endpoint `http://127.0.0.1:8080/mcp`; remote installs derive the same path from `--stack-host`. The canonical source of truth is shared between the repository and the database, with structural JSON as the read contract.
 
 ## Local mini stack
 
 - `local_stack/api/` is the Rust ingestion API that receives hook events and writes raw payloads plus metadata.
-- `local_stack/worker/` derives structured memory and vector-friendly chunks from raw Markdown.
-- `local_stack/mcp-server/` exposes search and resource reads over the official Rust MCP SDK.
+- `local_stack/worker/` derives structured memory, document revisions, and vector-friendly chunks from raw Markdown.
+- `local_stack/mcp-server/` exposes search, document reads, consolidation reads, and resource reads over the official Rust MCP SDK.
 - `docker-compose.yml` wires the services together around a shared `/data` volume and a local PostgreSQL metadata store.
 
 ## Data transformation pipeline
 
-The local stack does not index raw events directly for search. It first converts them into a staged data model with three distinct layers:
+The local stack does not index raw events directly for search. It first converts them into a staged data model with five distinct layers:
 
 - `ingest_events`: the immutable intake log. This preserves the original event envelope, key metadata, the resolved `content_hash`, and filesystem pointers to the raw files written under `/data/raw`.
-- `memory_items`: the document-level projection. One event becomes one normalized memory record with stable metadata such as `repo`, `scope`, `kind`, `title`, `summary`, `status`, `source_file`, and serialized provenance.
-- `memory_chunks`: the retrieval-level projection. A single `memory_item` is split into many smaller units optimized for search, ranking, and embedding similarity.
+- `document_revisions`: the canonical document revision log. One event becomes one normalized revision with stable metadata such as `document_id`, `revision_id`, `canonical_path`, `operation`, `title`, and serialized provenance.
+- `document_sections`: the structural projection. It preserves headings, ordered blocks, links, and references so the document can be reconstructed as JSON without losing order or text.
+- `consolidation_snapshots`: the persisted consolidated read model for repo, product, domain, or org views.
+- `memory_items` and `memory_chunks`: the retrieval-level projections. The document record remains human-readable while chunks stay optimized for search, ranking, and embedding similarity.
 
 That separation is intentional:
 
 - the API is optimized for durable intake
-- the worker is optimized for transformation
-- the MCP layer is optimized for retrieval
+- the worker is optimized for transformation and snapshot materialization
+- the MCP layer is optimized for structural JSON retrieval
 
 ### Step 1: intake and raw persistence
 
@@ -131,6 +133,7 @@ The transformation starts when a hook, Copilot adapter, Codex hook, Claude hook,
 At ingest time, the Rust API:
 
 - resolves `event_id`, `event_type`, `scope`, and `created_at`
+- carries `document_id`, `revision_id`, `parent_revision_id`, `operation`, and `canonical_path` when the producer supplies them
 - computes `content_hash` if the producer did not provide one
 - creates `/data/raw/<repo>/<event-id>/`
 - writes the normalized JSON envelope to `payload.json`
@@ -178,6 +181,7 @@ The worker:
 
 - parses frontmatter when the content starts with a YAML header
 - separates frontmatter from body
+- derives a stable `document_id` and `revision_id`
 - derives a title from frontmatter, event fields, or the first H1 heading
 - derives a summary from the first sentence or first meaningful body excerpt
 - infers `kind` from file path and event type
@@ -196,7 +200,7 @@ It uses heading-aware parsing:
 
 - Markdown headings `#` through `######` are interpreted as section boundaries
 - nested headings become a `heading_path`
-- each section retains only the text content that belongs to that heading subtree
+- each section retains text, ordered blocks, links, and references for that heading subtree
 
 If no headings exist, the whole document falls back to a single logical section named `document`.
 
@@ -262,9 +266,10 @@ The replacement strategy is:
 
 This means the chunk projection is treated as a rebuildable derivative, not as the source of truth. The stable source remains:
 
-- the canonical Markdown in the repo
+- the canonical repository documents under `knowledge/`
 - the raw ingest payload under `/data/raw`
 - the normalized memory item metadata in `memory_items`
+- the revision and consolidation projections stored in PostgreSQL
 
 ### Step 9: finalize processing state
 

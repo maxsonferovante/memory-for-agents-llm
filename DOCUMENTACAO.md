@@ -85,9 +85,9 @@ flowchart LR
 
 - O agente gera ou consome contexto.
 - Os hooks aplicam política antes e depois de certas ações.
-- O stack local recebe eventos e indexa conteúdo.
+- O stack local recebe eventos, mantém revisões canônicas e indexa conteúdo.
 - O conhecimento validado vai para `knowledge/`.
-- O MCP server expõe leitura e busca para os agentes.
+- O MCP server expõe leitura e busca estruturada em JSON para os agentes.
 
 ## Camada de conhecimento
 
@@ -195,7 +195,7 @@ O diretório `local_stack/` contém a implementação local mínima da arquitetu
 ### Componentes
 
 - `api/`: API de ingestão em Rust.
-- `worker/`: indexador assíncrono.
+- `worker/`: indexador assíncrono e materializador de snapshots.
 - `mcp-server/`: servidor MCP em Rust.
 - PostgreSQL: armazenamento de metadados.
 - `pgvector`: armazenamento vetorial para chunks.
@@ -213,11 +213,11 @@ sequenceDiagram
 
   Agent->>Hook: evento de tool use / stop
   Hook->>API: POST /api/v1/events
-  API->>DB: grava metadados e payload bruto
+  API->>DB: grava metadados, payload bruto e identidade de documento
   W->>DB: lê eventos novos
-  W->>DB: grava chunks e embeddings
-  MCP->>DB: consulta itens e chunks
-  MCP-->>Agent: retorna busca e leitura
+  W->>DB: grava revisões, seções, chunks, consolidações e embeddings
+  MCP->>DB: consulta revisões, consolidações e chunks
+  MCP-->>Agent: retorna JSON estrutural e recursos
 ```
 
 ### Endpoints e superfícies
@@ -226,11 +226,16 @@ sequenceDiagram
 - `GET /api/healthz`: saúde da API.
 - `GET /api/v1/items`: lista itens indexados.
 - `GET /api/v1/chunks`: lista chunks indexados.
+- `GET /api/v1/documents`: lista revisões documentais.
+- `GET /api/v1/consolidations`: lista snapshots consolidados.
+- `GET /api/v1/writeback-suggestions`: lista sugestões de volta ao repositório.
 - `/mcp`: superfície MCP para leitura.
 
 ### Contrato de dados
 
 - o conteúdo bruto é preservado em formato Markdown
+- cada documento canônico recebe `document_id` estável e revisões independentes
+- a leitura do MCP é em JSON estrutural equivalente ao Markdown canônico
 - a ingestão é append-only
 - os metadados vivem no PostgreSQL
 - os chunks recebem embeddings vetoriais
@@ -238,21 +243,25 @@ sequenceDiagram
 
 ## Transformação de dados no stack local
 
-Esta é a parte mais importante do pipeline técnico: o sistema não faz busca em cima do evento bruto. Ele transforma o evento em projeções próprias para memória e recuperação.
+Esta é a parte mais importante do pipeline técnico: o sistema não faz busca em cima do evento bruto. Ele transforma o evento em projeções próprias para memória, revisão e recuperação.
 
 ### Visão das camadas
 
-O mesmo evento percorre quatro superfícies de dados:
+O mesmo evento percorre seis superfícies de dados:
 
 1. `ingest_events`
 2. `job_queue`
-3. `memory_items`
-4. `memory_chunks`
+3. `document_revisions`
+4. `document_sections`
+5. `memory_items`
+6. `memory_chunks`
 
 Cada uma existe por um motivo diferente:
 
 - `ingest_events` preserva a entrada original e sua proveniência
 - `job_queue` controla o processamento assíncrono
+- `document_revisions` representa a memória em nível de revisão canônica
+- `document_sections` representa a estrutura de leitura recuperável
 - `memory_items` representa a memória em nível de documento
 - `memory_chunks` representa a memória em nível de recuperação semântica
 
